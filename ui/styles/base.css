@@ -2,11 +2,12 @@
 
 :root {
   /* Colors - Digital Paper Aesthetic */
+  --color-background: #F5F5F4;
   --color-bg: #FAFAF9;
   --color-surface: #FFFFFF;
   --color-text-primary: #1A1A1A;
   --color-text-secondary: #666666;
-  --color-text-tertiary: #999999;
+  --color-text-tertiary: #D4D4D8;
 
   /* Semantic Colors */
   --color-main: #3B82F6;
@@ -33,8 +34,13 @@
   /* UI */
   --border-radius: 12px;
   --border-radius-sm: 6px;
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+  /* Shadows - Multi-layered for depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 8px 16px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 6px 12px rgba(0, 0, 0, 0.1), 0 12px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 10px 20px rgba(0, 0, 0, 0.12), 0 20px 40px rgba(0, 0, 0, 0.15);
 
   /* Touch targets */
   --touch-target: 44px;

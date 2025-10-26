@@ -9,31 +9,41 @@
   min-height: var(--touch-target);
   font-size: var(--font-size-base);
   font-weight: 500;
-  border: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--border-radius-sm);
   cursor: pointer;
-  transition: all 150ms ease;
-  background-color: var(--color-surface);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
   color: var(--color-text-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn:hover {
-  transform: scale(1.02);
-  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn--primary {
-  background-color: var(--color-main);
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
   color: white;
+  border-color: rgba(37, 99, 235, 0.3);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+}
+
+.btn--primary:hover {
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
 }
 
 .btn--secondary {
-  background-color: var(--color-text-secondary);
+  background: linear-gradient(135deg, #6B7280 0%, #4B5563 100%);
   color: white;
+  border-color: rgba(75, 85, 99, 0.3);
 }
 
 .btn--tertiary {
@@ -59,9 +69,16 @@
   flex-direction: column;
   align-items: center;
   padding: var(--spacing-md);
-  background-color: var(--color-surface);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
   border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 200ms ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
 .stat-card__label {
@@ -169,16 +186,18 @@
   gap: var(--spacing-md);
   align-items: center;
   padding: var(--spacing-md);
-  background-color: var(--color-surface);
+  background: linear-gradient(135deg, #FFFFFF 0%, #FEFEFE 100%);
   border-radius: var(--border-radius-sm);
   margin-bottom: var(--spacing-sm);
   box-shadow: var(--shadow);
-  transition: all 150ms ease;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .tab-item:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   box-shadow: var(--shadow-lg);
+  border-color: rgba(59, 130, 246, 0.2);
 }
 
 .tab-item__checkbox {
@@ -299,21 +318,24 @@ select:focus {
 
 /* Domain Cards (Groups View) */
 .domain-card {
-  background-color: var(--color-surface);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
   border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   overflow: hidden;
-  transition: all 150ms ease;
+  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .domain-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: var(--shadow-xl);
+  border-color: rgba(59, 130, 246, 0.15);
 }
 
 .domain-card__header {
   padding: var(--spacing-md);
-  border-bottom: 1px solid var(--color-text-tertiary);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8) 0%, rgba(249, 250, 251, 0.5) 100%);
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -360,19 +382,22 @@ select:focus {
 .domain-card__tab {
   padding: var(--spacing-xs) var(--spacing-sm);
   margin-bottom: var(--spacing-xs);
-  background-color: var(--color-background);
+  background: linear-gradient(90deg, rgba(245, 245, 244, 0.5) 0%, rgba(250, 250, 249, 0.5) 100%);
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: all 150ms ease;
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
+  border: 1px solid rgba(0, 0, 0, 0.03);
 }
 
 .domain-card__tab:hover {
-  background-color: var(--color-text-tertiary);
-  transform: translateX(4px);
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%);
+  transform: translateX(6px);
+  border-color: rgba(59, 130, 246, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 .domain-card__tab-title {

@@ -309,31 +309,31 @@ async function handleQuickFilter(filterType) {
       clearBtn.style.display = 'none';
       break;
     case 'week':
-      input.value = 'age>7d';
+      input.value = 'age>1w';
       clearBtn.style.display = 'flex';
       break;
     case 'forgotten':
-      input.value = 'age>14d';
+      input.value = 'age>2w';
       clearBtn.style.display = 'flex';
       break;
     case 'ancient':
-      input.value = 'age>30d';
+      input.value = 'age>1m';
       clearBtn.style.display = 'flex';
       break;
     case '6months':
-      input.value = 'age>180d';
+      input.value = 'age>6m';
       clearBtn.style.display = 'flex';
       break;
     case '1year':
-      input.value = 'age>365d';
+      input.value = 'age>1y';
       clearBtn.style.display = 'flex';
       break;
     case '2years':
-      input.value = 'age>730d';
+      input.value = 'age>2y';
       clearBtn.style.display = 'flex';
       break;
     case '3years':
-      input.value = 'age>1095d';
+      input.value = 'age>3y';
       clearBtn.style.display = 'flex';
       break;
   }

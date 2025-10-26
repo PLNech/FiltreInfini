@@ -38,9 +38,10 @@
   flex-direction: column;
   gap: var(--spacing-sm);
   padding: var(--spacing-md);
-  background-color: var(--color-surface);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
   border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .query-section__label {
@@ -62,9 +63,10 @@
 /* Filters Section */
 .filters-section {
   padding: var(--spacing-md);
-  background-color: var(--color-surface);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
   border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .filters-section__title {
@@ -105,9 +107,10 @@
   gap: var(--spacing-sm);
   justify-content: center;
   padding: var(--spacing-md);
-  background-color: var(--color-surface);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
   border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .view-switcher__btn {
@@ -145,9 +148,10 @@
 /* Tabs Section */
 .tabs-section {
   padding: var(--spacing-md);
-  background-color: var(--color-surface);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
   border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .tabs-section__header {
@@ -183,9 +187,10 @@
 /* Groups Section */
 .groups-section {
   padding: var(--spacing-md);
-  background-color: var(--color-surface);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
   border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .groups-section__header {
