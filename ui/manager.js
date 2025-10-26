@@ -165,6 +165,25 @@ async function renderTabList(tabs) {
 }
 
 /**
+ * Format reading time for display
+ * Uses hour granularity for 3h+
+ */
+function formatReadingTime(minutes) {
+  if (minutes < 60) {
+    return `(${minutes}min)`;
+  } else if (minutes < 180) {
+    // < 3 hours: show as "1h42min"
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `(${hours}h${mins}min)` : `(${hours}h)`;
+  } else {
+    // >= 3 hours: hour granularity "3h"
+    const hours = Math.round(minutes / 60);
+    return `(${hours}h)`;
+  }
+}
+
+/**
  * Create a single tab item element
  */
 async function createTabItemElement(tab, group) {
@@ -211,6 +230,13 @@ async function createTabItemElement(tab, group) {
   const brandColor = getDomainColor(tab.domain);
   domain.style.color = brandColor;
   domain.style.fontWeight = '500';
+
+  // Reading time badge (if metadata available)
+  if (metadata && metadata.content && metadata.content.readingTimeMinutes) {
+    const readingTime = metadata.content.readingTimeMinutes;
+    const timeDisplay = formatReadingTime(readingTime);
+    domain.textContent += ` ${timeDisplay}`;
+  }
 
   const age = document.createElement('span');
   age.textContent = tab.ageFormatted;
