@@ -22,7 +22,15 @@
     "mobile",
     "productivity"
   ],
-  "author": "",
+  "author": "PLNech",
+  "homepage": "https://github.com/PLNech/FiltreInfini",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PLNech/FiltreInfini.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PLNech/FiltreInfini/issues"
+  },
   "license": "GPL-3.0-or-later",
   "devDependencies": {
     "@playwright/test": "^1.49.0",

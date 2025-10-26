@@ -1,0 +1,93 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v0.1.0
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test:unit
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Sign extension (if credentials available)
+        if: ${{ secrets.WEB_EXT_API_KEY != '' && secrets.WEB_EXT_API_SECRET != '' }}
+        run: |
+          npx web-ext sign \
+            --source-dir=. \
+            --artifacts-dir=web-ext-artifacts \
+            --api-key=${{ secrets.WEB_EXT_API_KEY }} \
+            --api-secret=${{ secrets.WEB_EXT_API_SECRET }} \
+            --channel=unlisted
+
+      - name: Get version from manifest
+        id: version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            web-ext-artifacts/*.xpi
+            web-ext-artifacts/*.zip
+          body: |
+            ## FiltreInfini v${{ steps.version.outputs.version }}
+
+            Advanced tab management for Firefox mobile.
+
+            ### Installation
+
+            **For Firefox Desktop/Android:**
+            1. Download `filtre_infini-${{ steps.version.outputs.version }}.xpi` (signed) or `.zip` (unsigned)
+            2. Open Firefox
+            3. Navigate to `about:addons`
+            4. Click the gear icon ⚙️
+            5. Select "Install Add-on from file"
+            6. Choose the downloaded file
+
+            ### Features
+            - 🔍 Powerful query language (domain, age, text filters)
+            - 📊 Rich metadata extraction (thumbnails, reading times, descriptions)
+            - 🎯 Three-tier workflow (Main/Staging/Bin)
+            - 📈 Smart search ranking (title > description > url)
+            - ⚠️ Broken tab detection (4xx/5xx)
+            - 📱 Mobile-first design
+
+            ### What's New
+            See [CHANGELOG.md](https://github.com/PLNech/FiltreInfini/blob/main/CHANGELOG.md) for full release notes.
+
+            ---
+
+            🤖 Built with [Claude Code](https://claude.com/claude-code)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-build
+          path: web-ext-artifacts/*

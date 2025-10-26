@@ -3,6 +3,8 @@
   "name": "FiltreInfini",
   "version": "0.1.0",
   "description": "Advanced tab management for Firefox mobile - powerful queries, bulk operations, and a three-tier workflow",
+  "author": "PLNech",
+  "homepage_url": "https://github.com/PLNech/FiltreInfini",
 
   "permissions": [
     "tabs",
@@ -27,6 +29,11 @@
     "48": "icons/icon-48.png",
     "96": "icons/icon-96.png",
     "128": "icons/icon-128.png"
+  },
+
+  "developer": {
+    "name": "PLNech",
+    "url": "https://github.com/PLNech"
   },
 
   "background": {
