@@ -8,6 +8,8 @@ let currentTabs = [];
 let allTabs = []; // Keep full list for filtering
 let selectedTabIds = new Set();
 let domainCounts = {}; // Track tab counts per domain
+let filterCounts = {}; // Track tab counts per age filter
+let categoryFilterActive = null; // Currently active category filter
 let searchDebounceTimer = null;
 let currentSortMode = 'lastAccessed'; // Default sort
 
@@ -27,22 +29,26 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Set up all event listeners
  */
 function setupEventListeners() {
-  // Query controls with search-as-you-type
+  // Query controls with instant search
   const queryInput = document.getElementById('query-input');
-  queryInput.addEventListener('input', handleSearchInput);
-  queryInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      clearTimeout(searchDebounceTimer);
-      handleRunQuery();
-    }
+  const clearBtn = document.getElementById('clear-query-btn');
+
+  queryInput.addEventListener('input', (e) => {
+    handleSearchInput();
+    // Show/hide clear button based on input
+    clearBtn.style.display = e.target.value ? 'flex' : 'none';
   });
 
-  document.getElementById('run-query-btn').addEventListener('click', handleRunQuery);
-  document.getElementById('clear-query-btn').addEventListener('click', handleClearQuery);
+  clearBtn.addEventListener('click', handleClearQuery);
 
-  // Quick filters
+  // Quick filters (age)
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => handleQuickFilter(e.target.dataset.filter));
+  });
+
+  // Category filters
+  document.querySelectorAll('.category-filter-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => handleCategoryFilter(e.target.dataset.category));
   });
 
   // Bulk actions
@@ -81,7 +87,46 @@ async function loadAllTabs() {
     domainCounts[tab.domain] = (domainCounts[tab.domain] || 0) + 1;
   }
 
+  // Calculate filter counts
+  await updateFilterCounts();
+
   await renderTabList(currentTabs);
+}
+
+/**
+ * Calculate and update badge counts for quick filters
+ */
+async function updateFilterCounts() {
+  filterCounts = {
+    all: allTabs.length,
+    week: allTabs.filter(tab => tab.age >= 7).length,
+    forgotten: allTabs.filter(tab => tab.age >= 14).length,
+    ancient: allTabs.filter(tab => tab.age >= 30).length,
+    '6months': allTabs.filter(tab => tab.age >= 180).length,
+    '1year': allTabs.filter(tab => tab.age >= 365).length,
+    '2years': allTabs.filter(tab => tab.age >= 730).length,
+    '3years': allTabs.filter(tab => tab.age >= 1095).length
+  };
+
+  // Update badge UI
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    const filterType = btn.dataset.filter;
+    const count = filterCounts[filterType];
+
+    // Remove existing badge if present
+    const existingBadge = btn.querySelector('.filter-badge');
+    if (existingBadge) {
+      existingBadge.remove();
+    }
+
+    // Add new badge
+    if (count !== undefined) {
+      const badge = document.createElement('span');
+      badge.className = 'filter-badge';
+      badge.textContent = count;
+      btn.appendChild(badge);
+    }
+  });
 }
 
 /**
@@ -223,7 +268,12 @@ async function handleRunQuery() {
  * Handle clear query
  */
 async function handleClearQuery() {
-  document.getElementById('query-input').value = '';
+  const queryInput = document.getElementById('query-input');
+  const clearBtn = document.getElementById('clear-query-btn');
+
+  queryInput.value = '';
+  clearBtn.style.display = 'none';
+
   await loadAllTabs();
 }
 
@@ -232,8 +282,9 @@ async function handleClearQuery() {
  */
 async function handleQuickFilter(filterType) {
   const input = document.getElementById('query-input');
+  const clearBtn = document.getElementById('clear-query-btn');
 
-  // Remove active class from all buttons
+  // Remove active class from all age filter buttons
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.classList.remove('active');
   });
@@ -241,34 +292,77 @@ async function handleQuickFilter(filterType) {
   // Add active class to clicked button
   event.target.classList.add('active');
 
+  // Clear category filter
+  categoryFilterActive = null;
+  document.querySelectorAll('.category-filter-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+
   switch (filterType) {
     case 'all':
       input.value = '';
+      clearBtn.style.display = 'none';
       break;
     case 'week':
-      input.value = 'age > 7d';
+      input.value = 'age>7d';
+      clearBtn.style.display = 'flex';
       break;
     case 'forgotten':
-      input.value = 'age > 14d';
+      input.value = 'age>14d';
+      clearBtn.style.display = 'flex';
       break;
     case 'ancient':
-      input.value = 'age > 30d';
+      input.value = 'age>30d';
+      clearBtn.style.display = 'flex';
       break;
     case '6months':
-      input.value = 'age > 180d';
+      input.value = 'age>180d';
+      clearBtn.style.display = 'flex';
       break;
     case '1year':
-      input.value = 'age > 365d';
+      input.value = 'age>365d';
+      clearBtn.style.display = 'flex';
       break;
     case '2years':
-      input.value = 'age > 730d';
+      input.value = 'age>730d';
+      clearBtn.style.display = 'flex';
       break;
     case '3years':
-      input.value = 'age > 1095d';
+      input.value = 'age>1095d';
+      clearBtn.style.display = 'flex';
       break;
   }
 
   await handleRunQuery();
+}
+
+/**
+ * Handle category filter buttons
+ */
+async function handleCategoryFilter(category) {
+  // Remove active class from all category buttons
+  document.querySelectorAll('.category-filter-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+
+  // Toggle category filter
+  if (categoryFilterActive === category) {
+    // Deactivate if clicking same category
+    categoryFilterActive = null;
+    await renderTabList(currentTabs);
+  } else {
+    // Activate new category
+    categoryFilterActive = category;
+    event.target.classList.add('active');
+
+    // Filter current tabs by category
+    const filtered = currentTabs.filter(tab => {
+      const tabCategory = categorizeTab(tab);
+      return tabCategory.category === category;
+    });
+
+    await renderTabList(filtered);
+  }
 }
 
 /**

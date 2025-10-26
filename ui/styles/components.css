@@ -96,6 +96,9 @@
   font-size: var(--font-size-base);
   cursor: pointer;
   transition: all 150ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 .filter-btn:hover {
@@ -104,6 +107,56 @@
 }
 
 .filter-btn.active {
+  background-color: var(--color-main);
+  color: white;
+  border-color: var(--color-main);
+}
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background-color: var(--color-text-tertiary);
+  color: var(--color-text-primary);
+  border-radius: 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.filter-btn.active .filter-badge {
+  background-color: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+.filter-btn:hover .filter-badge {
+  background-color: var(--color-main);
+  color: white;
+}
+
+/* Category Filter Buttons */
+.category-filter-btn {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  transition: all 150ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.category-filter-btn:hover {
+  border-color: var(--color-main);
+  transform: scale(1.02);
+}
+
+.category-filter-btn.active {
   background-color: var(--color-main);
   color: white;
   border-color: var(--color-main);
@@ -205,6 +258,37 @@ select:focus {
   outline: none;
   border-color: var(--color-main);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* Clear Input Button */
+.clear-input-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border: none;
+  background-color: var(--color-text-tertiary);
+  color: var(--color-surface);
+  border-radius: 50%;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms ease;
+  padding: 0;
+}
+
+.clear-input-btn:hover {
+  background-color: var(--color-text-secondary);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.clear-input-btn:active {
+  transform: translateY(-50%) scale(0.95);
 }
 
 /* Sort Select */

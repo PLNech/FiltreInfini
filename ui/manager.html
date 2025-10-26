@@ -20,33 +20,47 @@
     <main class="main">
       <!-- Query Input Section -->
       <section class="query-section">
-        <label for="query-input" class="query-section__label">Query:</label>
-        <input
-          type="text"
-          id="query-input"
-          class="query-section__input"
-          placeholder="domain: wikipedia.org AND age > 7d"
-          autocapitalize="off"
-          autocorrect="off"
-        >
-        <div class="query-section__actions">
-          <button id="run-query-btn" class="btn btn--primary">Run Query</button>
-          <button id="clear-query-btn" class="btn btn--tertiary">Clear</button>
+        <label for="query-input" class="query-section__label">Search:</label>
+        <div class="search-input-wrapper">
+          <input
+            type="text"
+            id="query-input"
+            class="query-section__input"
+            placeholder="claude memory age>7d  (text search + filters)"
+            autocapitalize="off"
+            autocorrect="off"
+          >
+          <button id="clear-query-btn" class="clear-input-btn" title="Clear search" style="display: none;">×</button>
         </div>
       </section>
 
       <!-- Quick Filters -->
       <section class="filters-section">
         <h2 class="filters-section__title">Quick Filters</h2>
-        <div class="filters-section__buttons">
-          <button class="filter-btn" data-filter="all">All Tabs</button>
-          <button class="filter-btn" data-filter="week">1 Week+</button>
-          <button class="filter-btn" data-filter="forgotten">2 Weeks+</button>
-          <button class="filter-btn" data-filter="ancient">1 Month+</button>
-          <button class="filter-btn" data-filter="6months">6 Months+</button>
-          <button class="filter-btn" data-filter="1year">1 Year+</button>
-          <button class="filter-btn" data-filter="2years">2 Years+</button>
-          <button class="filter-btn" data-filter="3years">3 Years+</button>
+        <div class="filters-section__group">
+          <h3 class="filters-section__subtitle">By Age</h3>
+          <div class="filters-section__buttons">
+            <button class="filter-btn" data-filter="all">All Tabs</button>
+            <button class="filter-btn" data-filter="week">1 Week+</button>
+            <button class="filter-btn" data-filter="forgotten">2 Weeks+</button>
+            <button class="filter-btn" data-filter="ancient">1 Month+</button>
+            <button class="filter-btn" data-filter="6months">6 Months+</button>
+            <button class="filter-btn" data-filter="1year">1 Year+</button>
+            <button class="filter-btn" data-filter="2years">2 Years+</button>
+            <button class="filter-btn" data-filter="3years">3 Years+</button>
+          </div>
+        </div>
+        <div class="filters-section__group">
+          <h3 class="filters-section__subtitle">By Category</h3>
+          <div class="filters-section__buttons">
+            <button class="category-filter-btn" data-category="tech">💻 Tech</button>
+            <button class="category-filter-btn" data-category="reading">📚 Reading</button>
+            <button class="category-filter-btn" data-category="videos">🎬 Videos</button>
+            <button class="category-filter-btn" data-category="sorties">🎭 Sorties</button>
+            <button class="category-filter-btn" data-category="shopping">🛒 Shopping</button>
+            <button class="category-filter-btn" data-category="social">💬 Social</button>
+            <button class="category-filter-btn" data-category="work">💼 Work</button>
+          </div>
         </div>
       </section>
 

@@ -48,14 +48,15 @@
   font-size: var(--font-size-base);
 }
 
+.search-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
 .query-section__input {
   width: 100%;
   min-height: var(--touch-target);
-}
-
-.query-section__actions {
-  display: flex;
-  gap: var(--spacing-sm);
+  padding-right: 40px; /* Space for clear button */
 }
 
 /* Filters Section */
@@ -68,6 +69,21 @@
 
 .filters-section__title {
   margin-bottom: var(--spacing-md);
+}
+
+.filters-section__group {
+  margin-bottom: var(--spacing-md);
+}
+
+.filters-section__group:last-child {
+  margin-bottom: 0;
+}
+
+.filters-section__subtitle {
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-text-secondary);
 }
 
 .filters-section__buttons {
