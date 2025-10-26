@@ -84,8 +84,14 @@
         </div>
       </section>
 
+      <!-- View Switcher -->
+      <section class="view-switcher">
+        <button id="view-list-btn" class="view-switcher__btn active">📋 List View</button>
+        <button id="view-groups-btn" class="view-switcher__btn">🎴 Groups View</button>
+      </section>
+
       <!-- Tab List -->
-      <section class="tabs-section">
+      <section id="list-view" class="tabs-section">
         <div class="tabs-section__header">
           <h2 class="tabs-section__title">Tabs (<span id="tabs-count">0</span>)</h2>
           <div class="tabs-section__controls">
@@ -108,6 +114,16 @@
 
         <div id="tabs-list" class="tabs-list">
           <!-- Tabs will be dynamically inserted here -->
+        </div>
+      </section>
+
+      <!-- Groups View -->
+      <section id="groups-view" class="groups-section" style="display: none;">
+        <div class="groups-section__header">
+          <h2 class="groups-section__title">Groups (<span id="groups-count">0</span> domains)</h2>
+        </div>
+        <div id="groups-container" class="groups-masonry">
+          <!-- Domain cards will be dynamically inserted here -->
         </div>
       </section>
     </main>

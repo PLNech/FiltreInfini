@@ -296,3 +296,94 @@ select:focus {
   min-width: 200px;
   cursor: pointer;
 }
+
+/* Domain Cards (Groups View) */
+.domain-card {
+  background-color: var(--color-surface);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: all 150ms ease;
+}
+
+.domain-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.domain-card__header {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.domain-card__favicon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.domain-card__domain {
+  font-weight: 600;
+  font-size: var(--font-size-md);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.domain-card__count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background-color: var(--color-background);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.domain-card__category {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background-color: var(--color-background);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.domain-card__body {
+  padding: var(--spacing-sm);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.domain-card__tab {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  background-color: var(--color-background);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.domain-card__tab:hover {
+  background-color: var(--color-text-tertiary);
+  transform: translateX(4px);
+}
+
+.domain-card__tab-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.domain-card__tab-age {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}

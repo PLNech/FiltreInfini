@@ -12,6 +12,7 @@ let filterCounts = {}; // Track tab counts per age filter
 let categoryFilterActive = null; // Currently active category filter
 let searchDebounceTimer = null;
 let currentSortMode = 'lastAccessed'; // Default sort
+let currentView = 'list'; // 'list' or 'groups'
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
@@ -62,6 +63,10 @@ function setupEventListeners() {
 
   // Sort dropdown
   document.getElementById('sort-select').addEventListener('change', handleSortChange);
+
+  // View switcher
+  document.getElementById('view-list-btn').addEventListener('click', () => switchView('list'));
+  document.getElementById('view-groups-btn').addEventListener('click', () => switchView('groups'));
 }
 
 /**
@@ -483,6 +488,136 @@ function sortTabs(tabs, sortMode) {
     default:
       return tabs;
   }
+}
+
+/**
+ * Switch between list and groups view
+ */
+function switchView(view) {
+  currentView = view;
+
+  // Update button states
+  document.getElementById('view-list-btn').classList.toggle('active', view === 'list');
+  document.getElementById('view-groups-btn').classList.toggle('active', view === 'groups');
+
+  // Show/hide views
+  document.getElementById('list-view').style.display = view === 'list' ? 'block' : 'none';
+  document.getElementById('groups-view').style.display = view === 'groups' ? 'block' : 'none';
+
+  // Render groups if switching to groups view
+  if (view === 'groups') {
+    renderGroupsView(currentTabs);
+  }
+}
+
+/**
+ * Render groups view with domain cards grouped by category
+ */
+function renderGroupsView(tabs) {
+  const container = document.getElementById('groups-container');
+  const countEl = document.getElementById('groups-count');
+
+  // Group tabs by domain
+  const domainGroups = {};
+  for (const tab of tabs) {
+    const domain = tab.domain;
+    if (!domainGroups[domain]) {
+      domainGroups[domain] = [];
+    }
+    domainGroups[domain].push(tab);
+  }
+
+  // Sort domains by tab count (descending)
+  const sortedDomains = Object.keys(domainGroups).sort((a, b) => {
+    return domainGroups[b].length - domainGroups[a].length;
+  });
+
+  countEl.textContent = sortedDomains.length;
+
+  // Clear container
+  container.innerHTML = '';
+
+  if (sortedDomains.length === 0) {
+    container.innerHTML = '<p style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-xl);">No domains found</p>';
+    return;
+  }
+
+  // Create domain cards
+  for (const domain of sortedDomains) {
+    const domainTabs = domainGroups[domain];
+    const card = createDomainCard(domain, domainTabs);
+    container.appendChild(card);
+  }
+}
+
+/**
+ * Create a domain card element
+ */
+function createDomainCard(domain, tabs) {
+  const card = document.createElement('div');
+  card.className = 'domain-card';
+
+  // Get category for first tab (all tabs from same domain should have same category)
+  const category = categorizeTab(tabs[0]);
+  const brandColor = getDomainColor(domain);
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'domain-card__header';
+  header.style.borderLeftColor = brandColor;
+  header.style.borderLeftWidth = '4px';
+  header.style.borderLeftStyle = 'solid';
+
+  const domainName = document.createElement('div');
+  domainName.className = 'domain-card__domain';
+  domainName.textContent = domain;
+  domainName.style.color = brandColor;
+
+  const count = document.createElement('span');
+  count.className = 'domain-card__count';
+  count.textContent = tabs.length;
+
+  const categoryBadge = document.createElement('span');
+  categoryBadge.className = 'domain-card__category';
+  categoryBadge.textContent = `${category.icon} ${category.category}`;
+  categoryBadge.style.color = category.color;
+
+  header.appendChild(domainName);
+  header.appendChild(count);
+  header.appendChild(categoryBadge);
+
+  // Body (list of tabs)
+  const body = document.createElement('div');
+  body.className = 'domain-card__body';
+
+  for (const tab of tabs) {
+    const tabEl = document.createElement('div');
+    tabEl.className = 'domain-card__tab';
+
+    const title = document.createElement('div');
+    title.className = 'domain-card__tab-title';
+    title.textContent = tab.title;
+    title.title = tab.title; // Full title on hover
+
+    const age = document.createElement('div');
+    age.className = 'domain-card__tab-age';
+    age.textContent = tab.ageFormatted;
+
+    tabEl.appendChild(title);
+    tabEl.appendChild(age);
+
+    // Click to focus tab
+    tabEl.addEventListener('click', () => {
+      browser.tabs.update(tab.id, { active: true });
+    });
+
+    body.appendChild(tabEl);
+  }
+
+  card.appendChild(header);
+  card.appendChild(body);
+
+  return card;
 }
 
 // TODO: Add keyboard shortcuts (Ctrl+A for select all, etc.)
