@@ -62,6 +62,9 @@ function setupEventListeners() {
   // Export
   document.getElementById('export-btn').addEventListener('click', handleExport);
 
+  // Fetch All Metadata
+  document.getElementById('fetch-all-btn').addEventListener('click', handleFetchAll);
+
   // API Test
   document.getElementById('api-test-btn').addEventListener('click', handleApiTest);
 
@@ -100,6 +103,69 @@ async function loadAllTabs() {
   await updateFilterCounts();
 
   await renderTabList(currentTabs);
+
+  // Auto-fetch metadata in background (only if not already cached)
+  prefetchMetadataInBackground();
+}
+
+/**
+ * Prefetch metadata for all tabs in the background
+ * Only fetches tabs that don't have cached metadata yet
+ */
+async function prefetchMetadataInBackground() {
+  console.log('[Metadata] Starting background prefetch...');
+
+  try {
+    await metadataManager.prefetchMetadata(allTabs);
+    console.log('[Metadata] Background prefetch complete');
+
+    // Re-render to show thumbnails and reading times
+    await renderTabList(currentTabs);
+  } catch (error) {
+    console.error('[Metadata] Background prefetch failed:', error);
+  }
+}
+
+/**
+ * Handle Fetch All button - force refresh all metadata
+ */
+async function handleFetchAll() {
+  const btn = document.getElementById('fetch-all-btn');
+  const originalText = btn.textContent;
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Fetching...';
+
+  try {
+    console.log('[Metadata] Force refreshing all metadata...');
+
+    // Clear all cached metadata
+    for (const tab of allTabs) {
+      await metadataManager.clearMetadata(tab.id);
+    }
+
+    // Fetch fresh metadata for all tabs
+    await metadataManager.prefetchMetadata(allTabs);
+
+    // Re-render with fresh data
+    await renderTabList(currentTabs);
+
+    console.log('[Metadata] Force refresh complete');
+    btn.textContent = '✅ Done!';
+
+    // Reset button after 2 seconds
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }, 2000);
+  } catch (error) {
+    console.error('[Metadata] Force refresh failed:', error);
+    btn.textContent = '❌ Failed';
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }, 2000);
+  }
 }
 
 /**
