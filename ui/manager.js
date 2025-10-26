@@ -62,6 +62,9 @@ function setupEventListeners() {
   // Export
   document.getElementById('export-btn').addEventListener('click', handleExport);
 
+  // API Test
+  document.getElementById('api-test-btn').addEventListener('click', handleApiTest);
+
   // Sort dropdown
   document.getElementById('sort-select').addEventListener('change', handleSortChange);
 
@@ -667,6 +670,45 @@ async function handleLoadMetadata(tab) {
   modalTitle.textContent = tab.title;
   modalBody.innerHTML = '<div class="loading">Loading metadata...</div>';
 
+  // Check host permissions first
+  try {
+    const permissions = await browser.permissions.getAll();
+    if (!permissions.origins || permissions.origins.length === 0) {
+      modalBody.innerHTML = `
+        <div class="metadata-error">
+          <p>⚠️ Host permissions required</p>
+          <p style="margin-top: 8px; font-size: 13px; color: var(--color-text-secondary);">
+            This extension needs permission to "Access your data for all websites" to load metadata.
+          </p>
+          <button id="grant-permissions-btn" class="btn btn--primary" style="margin-top: 16px;">
+            Grant Permissions
+          </button>
+        </div>
+      `;
+
+      // Add click handler
+      document.getElementById('grant-permissions-btn').addEventListener('click', async () => {
+        const granted = await requestHostPermissions();
+        if (granted) {
+          // Retry loading metadata
+          handleLoadMetadata(tab);
+        } else {
+          modalBody.innerHTML = `
+            <div class="metadata-error">
+              <p>⚠️ Permissions denied</p>
+              <p style="margin-top: 8px; font-size: 13px;">
+                Please grant permissions from about:addons to use metadata features.
+              </p>
+            </div>
+          `;
+        }
+      });
+      return;
+    }
+  } catch (e) {
+    console.error('Failed to check permissions:', e);
+  }
+
   try {
     // Fetch metadata
     const metadata = await metadataManager.getMetadata(tab.id);
@@ -865,6 +907,104 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+/**
+ * Request host permissions at runtime
+ * Required for browser.scripting API to be exposed
+ */
+async function requestHostPermissions() {
+  try {
+    console.log('[Permissions] Requesting <all_urls> host permission...');
+    const granted = await browser.permissions.request({
+      origins: ['<all_urls>']
+    });
+
+    if (granted) {
+      console.log('✓ Host permissions granted!');
+      return true;
+    } else {
+      console.log('✗ Host permissions denied by user');
+      return false;
+    }
+  } catch (error) {
+    console.error('Failed to request permissions:', error);
+    return false;
+  }
+}
+
+/**
+ * Handle API test button - diagnostic tool
+ */
+async function handleApiTest() {
+  console.log('=== Firefox API Diagnostics ===');
+  console.log('Firefox version:', navigator.userAgent.match(/Firefox\/(\d+)/)?.[1] || 'unknown');
+  console.log('Manifest version:', browser.runtime.getManifest().manifest_version);
+  console.log('');
+
+  console.log('API Availability:');
+  console.log('  browser.tabs.executeScript:', typeof browser.tabs.executeScript);
+  console.log('  browser.scripting:', typeof browser.scripting);
+  console.log('  browser.scripting?.executeScript:', typeof browser.scripting?.executeScript);
+  console.log('  browser.contentScripts:', typeof browser.contentScripts);
+  console.log('');
+
+  // Check permissions
+  try {
+    const permissions = await browser.permissions.getAll();
+    console.log('Granted permissions:', permissions.permissions);
+    console.log('Host permissions:', permissions.origins);
+    console.log('');
+
+    // If no host permissions, request them
+    if (!permissions.origins || permissions.origins.length === 0) {
+      console.log('⚠️  No host permissions granted. Requesting...');
+      const granted = await requestHostPermissions();
+
+      if (granted) {
+        console.log('✓ Permissions granted! Reloading page...');
+        console.log('');
+        // Reload page to get fresh API state
+        window.location.reload();
+        return;
+      } else {
+        alert('Host permissions denied. Metadata loading will not work.\n\nPlease grant "Access your data for all websites" permission from about:addons');
+        return;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to check permissions:', e);
+  }
+
+  // Try a test injection on first non-internal tab
+  const testTab = allTabs.find(tab => !tab.isInternal);
+  if (testTab) {
+    console.log('');
+    console.log(`Testing injection on tab ${testTab.id}: ${testTab.title}`);
+
+    try {
+      if (browser.scripting && browser.scripting.executeScript) {
+        console.log('Attempting browser.scripting.executeScript...');
+        await browser.scripting.executeScript({
+          target: { tabId: testTab.id },
+          func: () => console.log('[Test] Content script injected via scripting.executeScript!')
+        });
+        console.log('✓ browser.scripting.executeScript WORKS!');
+      } else if (browser.tabs.executeScript) {
+        console.log('Attempting browser.tabs.executeScript...');
+        await browser.tabs.executeScript(testTab.id, {
+          code: 'console.log("[Test] Content script injected via tabs.executeScript!");'
+        });
+        console.log('✓ browser.tabs.executeScript WORKS!');
+      } else {
+        console.log('✗ No injection API available');
+      }
+    } catch (error) {
+      console.error('✗ Injection failed:', error.message);
+    }
+  }
+
+  alert('API test complete! Check browser console for results.');
+}
 
 // TODO: Add keyboard shortcuts (Ctrl+A for select all, etc.)
 // TODO: Add loading states / skeleton screens
