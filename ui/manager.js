@@ -159,7 +159,7 @@ async function renderTabList(tabs) {
 
   for (let tab of sortedTabs) {
     const group = await groupManager.getGroup(tab.id);
-    const itemEl = createTabItemElement(tab, group);
+    const itemEl = await createTabItemElement(tab, group);
     listEl.appendChild(itemEl);
   }
 }
@@ -167,10 +167,16 @@ async function renderTabList(tabs) {
 /**
  * Create a single tab item element
  */
-function createTabItemElement(tab, group) {
+async function createTabItemElement(tab, group) {
   const item = document.createElement('div');
   item.className = 'tab-item';
   item.dataset.tabId = tab.id;
+
+  // Check if tab is broken (4xx/5xx) and add warning class
+  const metadata = await metadataStorage.getMetadata(tab.id);
+  if (metadata && metadata.httpCode && metadata.httpCode >= 400) {
+    item.classList.add('tab-item--broken');
+  }
 
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
@@ -373,9 +379,45 @@ async function handleQuickFilter(filterType) {
       showInternalTabs = !showInternalTabs;
       await loadAllTabs();
       return; // Don't run query
+    case 'broken':
+      // Filter broken tabs (4xx/5xx HTTP codes)
+      await filterBrokenTabs();
+      return; // Don't run query
   }
 
   await handleRunQuery();
+}
+
+/**
+ * Filter broken tabs (4xx/5xx HTTP codes)
+ * Requires metadata to be loaded
+ */
+async function filterBrokenTabs() {
+  console.log('[Broken Filter] Checking metadata for broken tabs...');
+
+  // Get all tabs
+  const allTabsData = await tabQuery.getAllTabsWithMetadata(showInternalTabs);
+
+  // Filter to tabs that have metadata with 4xx/5xx codes
+  const brokenTabs = [];
+
+  for (const tab of allTabsData) {
+    try {
+      const metadata = await metadataStorage.getMetadata(tab.id);
+      if (metadata && metadata.httpCode && metadata.httpCode >= 400) {
+        brokenTabs.push(tab);
+      }
+    } catch (error) {
+      console.error(`Failed to check metadata for tab ${tab.id}:`, error);
+    }
+  }
+
+  console.log(`[Broken Filter] Found ${brokenTabs.length} broken tabs`);
+
+  // Update UI
+  currentTabs = allTabsData;
+  await renderTabList(brokenTabs);
+  updateStatistics(brokenTabs);
 }
 
 /**

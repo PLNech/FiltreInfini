@@ -201,6 +201,18 @@
   border-color: rgba(59, 130, 246, 0.2);
 }
 
+/* Broken tab (4xx/5xx HTTP code) */
+.tab-item--broken {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+  border-color: rgba(251, 191, 36, 0.4);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1);
+}
+
+.tab-item--broken:hover {
+  background: linear-gradient(135deg, #FDE68A 0%, #FCD34D 100%);
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
 .tab-item__actions {
   display: flex;
   align-items: center;
