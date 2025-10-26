@@ -40,8 +40,13 @@
         <h2 class="filters-section__title">Quick Filters</h2>
         <div class="filters-section__buttons">
           <button class="filter-btn" data-filter="all">All Tabs</button>
-          <button class="filter-btn" data-filter="ancient">Ancient (30d+)</button>
-          <button class="filter-btn" data-filter="forgotten">Forgotten (14d+)</button>
+          <button class="filter-btn" data-filter="week">1 Week+</button>
+          <button class="filter-btn" data-filter="forgotten">2 Weeks+</button>
+          <button class="filter-btn" data-filter="ancient">1 Month+</button>
+          <button class="filter-btn" data-filter="6months">6 Months+</button>
+          <button class="filter-btn" data-filter="1year">1 Year+</button>
+          <button class="filter-btn" data-filter="2years">2 Years+</button>
+          <button class="filter-btn" data-filter="3years">3 Years+</button>
         </div>
       </section>
 
@@ -69,11 +74,21 @@
       <section class="tabs-section">
         <div class="tabs-section__header">
           <h2 class="tabs-section__title">Tabs (<span id="tabs-count">0</span>)</h2>
-          <div class="tabs-section__bulk-actions">
-            <button id="bulk-main-btn" class="btn btn--small">→ Main</button>
-            <button id="bulk-staging-btn" class="btn btn--small">→ Staging</button>
-            <button id="bulk-bin-btn" class="btn btn--small">→ Bin</button>
-            <button id="bulk-close-btn" class="btn btn--small btn--danger">Close</button>
+          <div class="tabs-section__controls">
+            <select id="sort-select" class="sort-select">
+              <option value="lastAccessed">Sort: Last Accessed (Recent)</option>
+              <option value="lastAccessed-asc">Sort: Last Accessed (Oldest)</option>
+              <option value="title">Sort: Title (A-Z)</option>
+              <option value="domain">Sort: Domain (A-Z)</option>
+              <option value="age">Sort: Age (Newest)</option>
+              <option value="age-desc">Sort: Age (Oldest)</option>
+            </select>
+            <div class="tabs-section__bulk-actions">
+              <button id="bulk-main-btn" class="btn btn--small">→ Main</button>
+              <button id="bulk-staging-btn" class="btn btn--small">→ Staging</button>
+              <button id="bulk-bin-btn" class="btn btn--small">→ Bin</button>
+              <button id="bulk-close-btn" class="btn btn--small btn--danger">Close</button>
+            </div>
           </div>
         </div>
 
@@ -90,6 +105,8 @@
   <script src="../lib/query-parser.js"></script>
   <script src="../lib/tab-query.js"></script>
   <script src="../lib/export.js"></script>
+  <script src="../lib/brand-colors.js"></script>
+  <script src="../lib/categorizer.js"></script>
   <script src="manager.js"></script>
 </body>
 </html>

@@ -93,15 +93,21 @@
 
 .tabs-section__header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-md);
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
 }
 
 .tabs-section__title {
   margin: 0;
+}
+
+.tabs-section__controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
 }
 
 .tabs-section__bulk-actions {

@@ -5,7 +5,11 @@
 
 // State
 let currentTabs = [];
+let allTabs = []; // Keep full list for filtering
 let selectedTabIds = new Set();
+let domainCounts = {}; // Track tab counts per domain
+let searchDebounceTimer = null;
+let currentSortMode = 'lastAccessed'; // Default sort
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
@@ -23,14 +27,18 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Set up all event listeners
  */
 function setupEventListeners() {
-  // Query controls
-  document.getElementById('run-query-btn').addEventListener('click', handleRunQuery);
-  document.getElementById('clear-query-btn').addEventListener('click', handleClearQuery);
-  document.getElementById('query-input').addEventListener('keypress', (e) => {
+  // Query controls with search-as-you-type
+  const queryInput = document.getElementById('query-input');
+  queryInput.addEventListener('input', handleSearchInput);
+  queryInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
+      clearTimeout(searchDebounceTimer);
       handleRunQuery();
     }
   });
+
+  document.getElementById('run-query-btn').addEventListener('click', handleRunQuery);
+  document.getElementById('clear-query-btn').addEventListener('click', handleClearQuery);
 
   // Quick filters
   document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -45,13 +53,34 @@ function setupEventListeners() {
 
   // Export
   document.getElementById('export-btn').addEventListener('click', handleExport);
+
+  // Sort dropdown
+  document.getElementById('sort-select').addEventListener('change', handleSortChange);
+}
+
+/**
+ * Handle search input with debouncing (search-as-you-type)
+ */
+function handleSearchInput() {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    handleRunQuery();
+  }, 300); // 300ms debounce
 }
 
 /**
  * Load all tabs and display
  */
 async function loadAllTabs() {
-  currentTabs = await tabQuery.getAllTabsWithMetadata();
+  allTabs = await tabQuery.getAllTabsWithMetadata();
+  currentTabs = allTabs;
+
+  // Calculate domain counts
+  domainCounts = {};
+  for (const tab of allTabs) {
+    domainCounts[tab.domain] = (domainCounts[tab.domain] || 0) + 1;
+  }
+
   await renderTabList(currentTabs);
 }
 
@@ -69,9 +98,12 @@ async function renderTabList(tabs) {
     return;
   }
 
+  // Apply sorting
+  const sortedTabs = sortTabs([...tabs], currentSortMode);
+
   listEl.innerHTML = '';
 
-  for (let tab of tabs) {
+  for (let tab of sortedTabs) {
     const group = await groupManager.getGroup(tab.id);
     const itemEl = createTabItemElement(tab, group);
     listEl.appendChild(itemEl);
@@ -109,15 +141,31 @@ function createTabItemElement(tab, group) {
   const meta = document.createElement('div');
   meta.className = 'tab-item__meta';
 
+  // Domain with count and brand color
   const domain = document.createElement('span');
   domain.className = 'tab-item__domain';
-  domain.textContent = tab.domain;
+  const domainCount = domainCounts[tab.domain] || 0;
+  domain.textContent = `${tab.domain}${domainCount > 1 ? ` (${domainCount})` : ''}`;
+
+  // Apply brand color
+  const brandColor = getDomainColor(tab.domain);
+  domain.style.color = brandColor;
+  domain.style.fontWeight = '500';
 
   const age = document.createElement('span');
   age.textContent = tab.ageFormatted;
 
+  // Category indicator
+  const category = categorizeTab(tab);
+  const categoryBadge = document.createElement('span');
+  categoryBadge.className = 'tab-item__category';
+  categoryBadge.textContent = `${category.icon} ${category.category}`;
+  categoryBadge.style.fontSize = '0.85em';
+  categoryBadge.style.color = category.color;
+
   meta.appendChild(domain);
   meta.appendChild(age);
+  meta.appendChild(categoryBadge);
 
   info.appendChild(title);
   info.appendChild(meta);
@@ -197,11 +245,26 @@ async function handleQuickFilter(filterType) {
     case 'all':
       input.value = '';
       break;
-    case 'ancient':
-      input.value = 'age > 30d';
+    case 'week':
+      input.value = 'age > 7d';
       break;
     case 'forgotten':
       input.value = 'age > 14d';
+      break;
+    case 'ancient':
+      input.value = 'age > 30d';
+      break;
+    case '6months':
+      input.value = 'age > 180d';
+      break;
+    case '1year':
+      input.value = 'age > 365d';
+      break;
+    case '2years':
+      input.value = 'age > 730d';
+      break;
+    case '3years':
+      input.value = 'age > 1095d';
       break;
   }
 
@@ -281,6 +344,51 @@ async function updateStatistics() {
   document.getElementById('stat-main').textContent = counts.main;
   document.getElementById('stat-staging').textContent = counts.staging;
   document.getElementById('stat-bin').textContent = counts.bin;
+}
+
+/**
+ * Handle sort dropdown change
+ */
+async function handleSortChange(event) {
+  currentSortMode = event.target.value;
+  await renderTabList(currentTabs);
+}
+
+/**
+ * Sort tabs by various criteria
+ * @param {Array} tabs - Array of tabs to sort
+ * @param {string} sortMode - Sort mode
+ * @returns {Array} Sorted tabs
+ */
+function sortTabs(tabs, sortMode) {
+  switch (sortMode) {
+    case 'lastAccessed':
+      // Most recently accessed first
+      return tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+
+    case 'lastAccessed-asc':
+      // Oldest accessed first
+      return tabs.sort((a, b) => (a.lastAccessed || 0) - (b.lastAccessed || 0));
+
+    case 'title':
+      // Alphabetical by title
+      return tabs.sort((a, b) => a.title.localeCompare(b.title));
+
+    case 'domain':
+      // Alphabetical by domain
+      return tabs.sort((a, b) => a.domain.localeCompare(b.domain));
+
+    case 'age':
+      // Newest tabs first (smallest age)
+      return tabs.sort((a, b) => a.age - b.age);
+
+    case 'age-desc':
+      // Oldest tabs first (largest age)
+      return tabs.sort((a, b) => b.age - a.age);
+
+    default:
+      return tabs;
+  }
 }
 
 // TODO: Add keyboard shortcuts (Ctrl+A for select all, etc.)
