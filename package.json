@@ -5,7 +5,9 @@
   "private": true,
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "echo 'Unit tests not yet configured'",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:unit:ui": "vitest --ui",
     "test:e2e": "playwright test",
     "test:ui": "playwright test --ui",
     "dev": "web-ext run --source-dir=. --target=firefox-desktop --start-url about:debugging#/runtime/this-firefox --start-url about:blank",
@@ -24,6 +26,9 @@
   "license": "GPL-3.0-or-later",
   "devDependencies": {
     "@playwright/test": "^1.49.0",
+    "@vitest/ui": "^3.2.4",
+    "happy-dom": "^20.0.8",
+    "vitest": "^3.2.4",
     "web-ext": "^8.3.0"
   }
 }
