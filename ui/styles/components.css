@@ -246,12 +246,19 @@
 }
 
 .tab-item__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+/* When thumbnail exists, use grid layout */
+.tab-item__info:has(.tab-item__thumbnail) {
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-rows: auto auto;
   gap: var(--spacing-xs) var(--spacing-sm);
   align-items: center;
-  min-width: 0;
 }
 
 /* Thumbnail styling */
