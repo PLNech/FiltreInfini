@@ -212,6 +212,17 @@ async function createTabItemElement(tab, group) {
   const info = document.createElement('div');
   info.className = 'tab-item__info';
 
+  // Add thumbnail if OG image available
+  let thumbnail = null;
+  if (metadata && metadata.og && metadata.og.image) {
+    thumbnail = document.createElement('img');
+    thumbnail.className = 'tab-item__thumbnail';
+    thumbnail.src = metadata.og.image;
+    thumbnail.alt = tab.title;
+    thumbnail.loading = 'lazy'; // Performance: lazy load images
+    thumbnail.onerror = () => thumbnail.style.display = 'none'; // Hide if fails
+  }
+
   const title = document.createElement('div');
   title.className = 'tab-item__title';
   title.textContent = tab.title;
@@ -253,6 +264,10 @@ async function createTabItemElement(tab, group) {
   meta.appendChild(age);
   meta.appendChild(categoryBadge);
 
+  // Add thumbnail first if available
+  if (thumbnail) {
+    info.appendChild(thumbnail);
+  }
   info.appendChild(title);
   info.appendChild(meta);
 
