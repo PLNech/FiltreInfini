@@ -129,6 +129,20 @@
     </main>
   </div>
 
+  <!-- Details Modal -->
+  <div id="details-modal" class="modal" style="display: none;">
+    <div class="modal__overlay"></div>
+    <div class="modal__content">
+      <div class="modal__header">
+        <h2 class="modal__title" id="modal-title">Tab Details</h2>
+        <button class="modal__close" id="modal-close-btn">×</button>
+      </div>
+      <div class="modal__body" id="modal-body">
+        <div class="loading">Loading metadata...</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Load libraries and main script -->
   <script src="../lib/storage.js"></script>
   <script src="../lib/group-manager.js"></script>

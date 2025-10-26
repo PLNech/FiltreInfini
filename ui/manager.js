@@ -224,9 +224,26 @@ function createTabItemElement(tab, group) {
   badge.className = `tab-item__badge tab-item__badge--${group}`;
   badge.textContent = group.charAt(0).toUpperCase() + group.slice(1);
 
+  // Actions container
+  const actions = document.createElement('div');
+  actions.className = 'tab-item__actions';
+
+  // Load metadata button
+  const metadataBtn = document.createElement('button');
+  metadataBtn.className = 'tab-item__action-btn';
+  metadataBtn.textContent = '📊';
+  metadataBtn.title = 'Load metadata';
+  metadataBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleLoadMetadata(tab);
+  });
+
+  actions.appendChild(metadataBtn);
+  actions.appendChild(badge);
+
   item.appendChild(checkbox);
   item.appendChild(info);
-  item.appendChild(badge);
+  item.appendChild(actions);
 
   // Make item clickable to focus tab
   item.addEventListener('click', (e) => {
@@ -619,6 +636,198 @@ function createDomainCard(domain, tabs) {
 
   return card;
 }
+
+/**
+ * Handle load metadata button click
+ */
+async function handleLoadMetadata(tab) {
+  const modal = document.getElementById('details-modal');
+  const modalTitle = document.getElementById('modal-title');
+  const modalBody = document.getElementById('modal-body');
+
+  // Show modal
+  modal.style.display = 'flex';
+  modalTitle.textContent = tab.title;
+  modalBody.innerHTML = '<div class="loading">Loading metadata...</div>';
+
+  try {
+    // Fetch metadata
+    const metadata = await metadataManager.getMetadata(tab.id);
+
+    if (!metadata) {
+      modalBody.innerHTML = '<div class="metadata-error">⚠️ Could not load metadata. This tab may not be accessible.</div>';
+      return;
+    }
+
+    // Render metadata
+    modalBody.innerHTML = renderMetadata(metadata, tab);
+  } catch (error) {
+    console.error('Failed to load metadata:', error);
+    modalBody.innerHTML = `<div class="metadata-error">⚠️ Error: ${error.message}</div>`;
+  }
+}
+
+/**
+ * Render metadata as HTML
+ */
+function renderMetadata(metadata, tab) {
+  let html = '';
+
+  // HTTP Status
+  html += '<div class="metadata-section">';
+  html += '<h3 class="metadata-section__title">📡 Status</h3>';
+  html += '<div class="metadata-field">';
+  html += '<div class="metadata-field__label">HTTP Code</div>';
+  html += '<div class="metadata-field__value">';
+  if (metadata.httpCode) {
+    const codeClass = metadata.httpCode >= 400 ? (metadata.httpCode >= 500 ? 'http-code--500' : 'http-code--404') : 'http-code--200';
+    html += `<span class="http-code ${codeClass}">${metadata.httpCode}</span>`;
+  } else {
+    html += '<span class="metadata-field__value--empty">Unknown</span>';
+  }
+  html += '</div></div></div>';
+
+  // Open Graph
+  if (metadata.og && Object.values(metadata.og).some(v => v)) {
+    html += '<div class="metadata-section">';
+    html += '<h3 class="metadata-section__title">🎴 Open Graph</h3>';
+
+    if (metadata.og.title) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Title</div>';
+      html += `<div class="metadata-field__value">${escapeHtml(metadata.og.title)}</div>`;
+      html += '</div>';
+    }
+
+    if (metadata.og.description) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Description</div>';
+      html += `<div class="metadata-field__value">${escapeHtml(metadata.og.description)}</div>`;
+      html += '</div>';
+    }
+
+    if (metadata.og.image) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Image</div>';
+      html += `<div class="metadata-field__value"><img src="${escapeHtml(metadata.og.image)}" style="max-width: 100%; border-radius: 6px;" /></div>`;
+      html += '</div>';
+    }
+
+    if (metadata.og.type) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Type</div>';
+      html += `<div class="metadata-field__value">${escapeHtml(metadata.og.type)}</div>`;
+      html += '</div>';
+    }
+
+    if (metadata.og.siteName) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Site Name</div>';
+      html += `<div class="metadata-field__value">${escapeHtml(metadata.og.siteName)}</div>`;
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+
+  // Meta Tags
+  if (metadata.meta && Object.values(metadata.meta).some(v => v)) {
+    html += '<div class="metadata-section">';
+    html += '<h3 class="metadata-section__title">📝 Meta Tags</h3>';
+
+    if (metadata.meta.description) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Description</div>';
+      html += `<div class="metadata-field__value">${escapeHtml(metadata.meta.description)}</div>`;
+      html += '</div>';
+    }
+
+    if (metadata.meta.keywords) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Keywords</div>';
+      html += `<div class="metadata-field__value">${escapeHtml(metadata.meta.keywords)}</div>`;
+      html += '</div>';
+    }
+
+    if (metadata.meta.author) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Author</div>';
+      html += `<div class="metadata-field__value">${escapeHtml(metadata.meta.author)}</div>`;
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+
+  // Content Stats
+  if (metadata.content) {
+    html += '<div class="metadata-section">';
+    html += '<h3 class="metadata-section__title">📊 Content</h3>';
+
+    html += '<div class="metadata-field">';
+    html += '<div class="metadata-field__label">Word Count</div>';
+    html += `<div class="metadata-field__value">${metadata.content.wordCount?.toLocaleString() || 'N/A'}</div>`;
+    html += '</div>';
+
+    html += '<div class="metadata-field">';
+    html += '<div class="metadata-field__label">Reading Time</div>';
+    html += `<div class="metadata-field__value">📖 ${metadata.content.readingTimeMinutes || '?'} min read</div>`;
+    html += '</div>';
+
+    if (metadata.content.language) {
+      html += '<div class="metadata-field">';
+      html += '<div class="metadata-field__label">Language</div>';
+      html += `<div class="metadata-field__value">${escapeHtml(metadata.content.language)}</div>`;
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+
+  // URL
+  html += '<div class="metadata-section">';
+  html += '<h3 class="metadata-section__title">🔗 URL</h3>';
+  html += '<div class="metadata-field">';
+  html += `<div class="metadata-field__value" style="word-break: break-all; font-size: 12px;">${escapeHtml(tab.url)}</div>`;
+  html += '</div></div>';
+
+  return html;
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Close modal
+ */
+function closeModal() {
+  const modal = document.getElementById('details-modal');
+  modal.style.display = 'none';
+}
+
+// Set up modal close handlers
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('details-modal');
+  const closeBtn = document.getElementById('modal-close-btn');
+  const overlay = modal.querySelector('.modal__overlay');
+
+  closeBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', closeModal);
+
+  // Escape key to close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.style.display === 'flex') {
+      closeModal();
+    }
+  });
+});
 
 // TODO: Add keyboard shortcuts (Ctrl+A for select all, etc.)
 // TODO: Add loading states / skeleton screens
