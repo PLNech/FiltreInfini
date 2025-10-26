@@ -733,6 +733,30 @@ async function handleLoadMetadata(tab) {
 
     // Render metadata
     modalBody.innerHTML = renderMetadata(metadata, tab);
+
+    // Hook up reload button
+    const reloadBtn = document.getElementById('reload-metadata-btn');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', async () => {
+        reloadBtn.disabled = true;
+        reloadBtn.textContent = '🔄 Reloading...';
+        try {
+          // Force refresh metadata
+          await metadataManager.clearMetadata(tab.id);
+          const freshMetadata = await metadataManager.getMetadata(tab.id, true);
+          if (freshMetadata) {
+            modalBody.innerHTML = renderMetadata(freshMetadata, tab);
+            // Re-hook reload button recursively
+            handleLoadMetadata(tab);
+          }
+        } catch (error) {
+          console.error('Failed to reload metadata:', error);
+          alert('Failed to reload: ' + error.message);
+        }
+        reloadBtn.disabled = false;
+        reloadBtn.textContent = '🔄 Reload Metadata';
+      });
+    }
   } catch (error) {
     console.error('Failed to load metadata:', error);
     modalBody.innerHTML = `
@@ -751,6 +775,11 @@ async function handleLoadMetadata(tab) {
  */
 function renderMetadata(metadata, tab) {
   let html = '';
+
+  // Reload button at the top
+  html += '<div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">';
+  html += `<button id="reload-metadata-btn" class="btn btn--small btn--secondary" data-tab-id="${tab.id}">🔄 Reload Metadata</button>`;
+  html += '</div>';
 
   // HTTP Status
   html += '<div class="metadata-section">';
@@ -774,14 +803,14 @@ function renderMetadata(metadata, tab) {
     if (metadata.og.title) {
       html += '<div class="metadata-field">';
       html += '<div class="metadata-field__label">Title</div>';
-      html += `<div class="metadata-field__value">${escapeHtml(metadata.og.title)}</div>`;
+      html += `<div class="metadata-field__value">${safeDisplay(metadata.og.title)}</div>`;
       html += '</div>';
     }
 
     if (metadata.og.description) {
       html += '<div class="metadata-field">';
       html += '<div class="metadata-field__label">Description</div>';
-      html += `<div class="metadata-field__value">${escapeHtml(metadata.og.description)}</div>`;
+      html += `<div class="metadata-field__value">${safeDisplay(metadata.og.description)}</div>`;
       html += '</div>';
     }
 
@@ -795,14 +824,14 @@ function renderMetadata(metadata, tab) {
     if (metadata.og.type) {
       html += '<div class="metadata-field">';
       html += '<div class="metadata-field__label">Type</div>';
-      html += `<div class="metadata-field__value">${escapeHtml(metadata.og.type)}</div>`;
+      html += `<div class="metadata-field__value">${safeDisplay(metadata.og.type)}</div>`;
       html += '</div>';
     }
 
     if (metadata.og.siteName) {
       html += '<div class="metadata-field">';
       html += '<div class="metadata-field__label">Site Name</div>';
-      html += `<div class="metadata-field__value">${escapeHtml(metadata.og.siteName)}</div>`;
+      html += `<div class="metadata-field__value">${safeDisplay(metadata.og.siteName)}</div>`;
       html += '</div>';
     }
 
@@ -817,21 +846,21 @@ function renderMetadata(metadata, tab) {
     if (metadata.meta.description) {
       html += '<div class="metadata-field">';
       html += '<div class="metadata-field__label">Description</div>';
-      html += `<div class="metadata-field__value">${escapeHtml(metadata.meta.description)}</div>`;
+      html += `<div class="metadata-field__value">${safeDisplay(metadata.meta.description)}</div>`;
       html += '</div>';
     }
 
     if (metadata.meta.keywords) {
       html += '<div class="metadata-field">';
       html += '<div class="metadata-field__label">Keywords</div>';
-      html += `<div class="metadata-field__value">${escapeHtml(metadata.meta.keywords)}</div>`;
+      html += `<div class="metadata-field__value">${safeDisplay(metadata.meta.keywords)}</div>`;
       html += '</div>';
     }
 
     if (metadata.meta.author) {
       html += '<div class="metadata-field">';
       html += '<div class="metadata-field__label">Author</div>';
-      html += `<div class="metadata-field__value">${escapeHtml(metadata.meta.author)}</div>`;
+      html += `<div class="metadata-field__value">${safeDisplay(metadata.meta.author)}</div>`;
       html += '</div>';
     }
 
@@ -856,7 +885,7 @@ function renderMetadata(metadata, tab) {
     if (metadata.content.language) {
       html += '<div class="metadata-field">';
       html += '<div class="metadata-field__label">Language</div>';
-      html += `<div class="metadata-field__value">${escapeHtml(metadata.content.language)}</div>`;
+      html += `<div class="metadata-field__value">${safeDisplay(metadata.content.language)}</div>`;
       html += '</div>';
     }
 
@@ -874,6 +903,16 @@ function renderMetadata(metadata, tab) {
 }
 
 /**
+ * Decode HTML entities (opposite of escapeHtml)
+ */
+function decodeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.innerHTML = text;
+  return div.textContent;
+}
+
+/**
  * Escape HTML to prevent XSS
  */
 function escapeHtml(text) {
@@ -881,6 +920,15 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+/**
+ * Safe display of text that might contain HTML entities
+ */
+function safeDisplay(text) {
+  if (!text) return '';
+  // First decode any HTML entities, then escape for safe display
+  return escapeHtml(decodeHtml(text));
 }
 
 /**
