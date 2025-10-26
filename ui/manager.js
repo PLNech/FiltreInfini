@@ -666,7 +666,20 @@ async function handleLoadMetadata(tab) {
     const metadata = await metadataManager.getMetadata(tab.id);
 
     if (!metadata) {
-      modalBody.innerHTML = '<div class="metadata-error">⚠️ Could not load metadata. This tab may not be accessible.</div>';
+      modalBody.innerHTML = `
+        <div class="metadata-error">
+          <p>⚠️ Could not load metadata.</p>
+          <p style="margin-top: 8px; font-size: 12px; color: var(--color-text-secondary);">
+            This can happen if:
+            <ul style="margin: 8px 0 0 20px; text-align: left;">
+              <li>The tab hasn't been reloaded since installing the extension</li>
+              <li>The page is a browser internal page (about:, moz-extension:)</li>
+              <li>The page blocks content scripts</li>
+            </ul>
+            Try reloading the tab and clicking 📊 again.
+          </p>
+        </div>
+      `;
       return;
     }
 
@@ -674,7 +687,14 @@ async function handleLoadMetadata(tab) {
     modalBody.innerHTML = renderMetadata(metadata, tab);
   } catch (error) {
     console.error('Failed to load metadata:', error);
-    modalBody.innerHTML = `<div class="metadata-error">⚠️ Error: ${error.message}</div>`;
+    modalBody.innerHTML = `
+      <div class="metadata-error">
+        <p>⚠️ Error: ${escapeHtml(error.message)}</p>
+        <p style="margin-top: 8px; font-size: 12px; color: var(--color-text-secondary);">
+          Check the browser console for details.
+        </p>
+      </div>
+    `;
   }
 }
 

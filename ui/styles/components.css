@@ -582,3 +582,19 @@ select:focus {
   background: rgba(245, 158, 11, 0.1);
   color: #D97706;
 }
+
+.metadata-error {
+  padding: var(--spacing-lg);
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--border-radius);
+  text-align: center;
+}
+
+.metadata-error p {
+  margin: 0;
+}
+
+.metadata-error ul {
+  list-style: disc;
+}
