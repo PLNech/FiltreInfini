@@ -79,10 +79,6 @@ jobs:
 
             ### What's New
             See [CHANGELOG.md](https://github.com/PLNech/FiltreInfini/blob/main/CHANGELOG.md) for full release notes.
-
-            ---
-
-            🤖 Built with [Claude Code](https://claude.com/claude-code)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -86,7 +86,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 ### License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE) for details.
-
----
-
-🤖 Built with [Claude Code](https://claude.com/claude-code)

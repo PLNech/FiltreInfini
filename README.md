@@ -164,17 +164,7 @@ See MOBILE_TESTING_AND_RELEASE.md
 
 ## Contributing
 
-Contributions welcome! This project was built with [Claude Code](https://claude.com/claude-code).
-
-### Co-Authored Commits
-
-This project uses collaborative development. All commits include:
-
-```
-🤖 Generated with Claude Code (https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
+Contributions welcome!
 
 ### Guidelines
 
@@ -215,9 +205,4 @@ GPL-3.0-or-later - See [LICENSE](LICENSE)
 
 ## Credits
 
-- **Author**: [PLNech](https://github.com/PLNech)
-- **Built with**: [Claude Code](https://claude.com/claude-code)
-
----
-
-**Made with ☕ and 🤖 by [PLNech](https://github.com/PLNech) & [Claude Code](https://claude.com/claude-code)**
+**Author**: [PLNech](https://github.com/PLNech)
