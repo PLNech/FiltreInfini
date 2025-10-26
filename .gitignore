@@ -1,0 +1,30 @@
+# Node modules
+node_modules/
+
+# Test results
+test-results/
+playwright-report/
+
+# Extension packaging
+*.zip
+*.xpi
+web-ext-artifacts/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local

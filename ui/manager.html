@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FiltreInfini - Tab Manager</title>
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/layouts.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="header__title">FiltreInfini</h1>
+      <div class="header__actions">
+        <button id="export-btn" class="btn btn--secondary">Export CSV</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Query Input Section -->
+      <section class="query-section">
+        <label for="query-input" class="query-section__label">Query:</label>
+        <input
+          type="text"
+          id="query-input"
+          class="query-section__input"
+          placeholder="domain: wikipedia.org AND age > 7d"
+          autocapitalize="off"
+          autocorrect="off"
+        >
+        <div class="query-section__actions">
+          <button id="run-query-btn" class="btn btn--primary">Run Query</button>
+          <button id="clear-query-btn" class="btn btn--tertiary">Clear</button>
+        </div>
+      </section>
+
+      <!-- Quick Filters -->
+      <section class="filters-section">
+        <h2 class="filters-section__title">Quick Filters</h2>
+        <div class="filters-section__buttons">
+          <button class="filter-btn" data-filter="all">All Tabs</button>
+          <button class="filter-btn" data-filter="ancient">Ancient (30d+)</button>
+          <button class="filter-btn" data-filter="forgotten">Forgotten (14d+)</button>
+        </div>
+      </section>
+
+      <!-- Statistics -->
+      <section class="stats-section">
+        <div class="stat-card">
+          <span class="stat-card__label">Total</span>
+          <span id="stat-total" class="stat-card__value">0</span>
+        </div>
+        <div class="stat-card stat-card--main">
+          <span class="stat-card__label">Main</span>
+          <span id="stat-main" class="stat-card__value">0</span>
+        </div>
+        <div class="stat-card stat-card--staging">
+          <span class="stat-card__label">Staging</span>
+          <span id="stat-staging" class="stat-card__value">0</span>
+        </div>
+        <div class="stat-card stat-card--bin">
+          <span class="stat-card__label">Bin</span>
+          <span id="stat-bin" class="stat-card__value">0</span>
+        </div>
+      </section>
+
+      <!-- Tab List -->
+      <section class="tabs-section">
+        <div class="tabs-section__header">
+          <h2 class="tabs-section__title">Tabs (<span id="tabs-count">0</span>)</h2>
+          <div class="tabs-section__bulk-actions">
+            <button id="bulk-main-btn" class="btn btn--small">→ Main</button>
+            <button id="bulk-staging-btn" class="btn btn--small">→ Staging</button>
+            <button id="bulk-bin-btn" class="btn btn--small">→ Bin</button>
+            <button id="bulk-close-btn" class="btn btn--small btn--danger">Close</button>
+          </div>
+        </div>
+
+        <div id="tabs-list" class="tabs-list">
+          <!-- Tabs will be dynamically inserted here -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Load libraries and main script -->
+  <script src="../lib/storage.js"></script>
+  <script src="../lib/group-manager.js"></script>
+  <script src="../lib/query-parser.js"></script>
+  <script src="../lib/tab-query.js"></script>
+  <script src="../lib/export.js"></script>
+  <script src="manager.js"></script>
+</body>
+</html>
