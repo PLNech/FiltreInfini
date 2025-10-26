@@ -31,11 +31,7 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
     console.log('Running scheduled Bin cleanup...');
 
     try {
-      // Note: We need to create instances here since this is a separate context
-      // Import the classes by loading the scripts
-      await import('../lib/storage.js');
-      await import('../lib/group-manager.js');
-
+      // Note: storage.js and group-manager.js are loaded via manifest.json background.scripts
       const deletedIds = await groupManager.cleanupBin();
       console.log(`Cleaned up ${deletedIds.length} tabs from Bin`);
 

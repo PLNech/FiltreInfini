@@ -25,7 +25,11 @@
   },
 
   "background": {
-    "scripts": ["background/background.js"]
+    "scripts": [
+      "lib/storage.js",
+      "lib/group-manager.js",
+      "background/background.js"
+    ]
   },
 
   "browser_specific_settings": {
