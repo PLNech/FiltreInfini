@@ -28,9 +28,18 @@
     "scripts": [
       "lib/storage.js",
       "lib/group-manager.js",
+      "lib/metadata-storage.js",
       "background/background.js"
     ]
   },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-scripts/metadata-extractor.js"],
+      "run_at": "document_idle"
+    }
+  ],
 
   "browser_specific_settings": {
     "gecko": {

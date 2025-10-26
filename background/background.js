@@ -55,6 +55,20 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
+// Handle tab URL changes - clear metadata cache
+// When tab URL changes, old metadata is no longer valid
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.url) {
+    console.log(`Tab ${tabId} URL changed, clearing metadata cache`);
+
+    try {
+      await metadataStorage.clearMetadata(tabId);
+    } catch (error) {
+      console.error(`Failed to clear metadata for tab ${tabId}:`, error);
+    }
+  }
+});
+
 console.log('FiltreInfini background script loaded');
 
 // TODO: Add badge with tab count in Bin?
