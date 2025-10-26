@@ -10,6 +10,7 @@ let selectedTabIds = new Set();
 let domainCounts = {}; // Track tab counts per domain
 let filterCounts = {}; // Track tab counts per age filter
 let categoryFilterActive = null; // Currently active category filter
+let showInternalTabs = false; // Show internal tabs (about:, moz-extension:, etc.)
 let searchDebounceTimer = null;
 let currentSortMode = 'lastAccessed'; // Default sort
 let currentView = 'list'; // 'list' or 'groups'
@@ -83,7 +84,7 @@ function handleSearchInput() {
  * Load all tabs and display
  */
 async function loadAllTabs() {
-  allTabs = await tabQuery.getAllTabsWithMetadata();
+  allTabs = await tabQuery.getAllTabsWithMetadata(showInternalTabs);
   currentTabs = allTabs;
 
   // Calculate domain counts
@@ -364,6 +365,11 @@ async function handleQuickFilter(filterType) {
       input.value = 'age>3y';
       clearBtn.style.display = 'flex';
       break;
+    case 'internal':
+      // Toggle internal tabs visibility
+      showInternalTabs = !showInternalTabs;
+      await loadAllTabs();
+      return; // Don't run query
   }
 
   await handleRunQuery();
