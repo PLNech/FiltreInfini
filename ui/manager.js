@@ -228,6 +228,16 @@ function createTabItemElement(tab, group) {
   const actions = document.createElement('div');
   actions.className = 'tab-item__actions';
 
+  // Go to tab button
+  const goToBtn = document.createElement('button');
+  goToBtn.className = 'tab-item__action-btn';
+  goToBtn.textContent = '➡️';
+  goToBtn.title = 'Go to tab';
+  goToBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    browser.tabs.update(tab.id, { active: true });
+  });
+
   // Load metadata button
   const metadataBtn = document.createElement('button');
   metadataBtn.className = 'tab-item__action-btn';
@@ -238,6 +248,7 @@ function createTabItemElement(tab, group) {
     handleLoadMetadata(tab);
   });
 
+  actions.appendChild(goToBtn);
   actions.appendChild(metadataBtn);
   actions.appendChild(badge);
 
