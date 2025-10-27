@@ -2,24 +2,30 @@
  * Unit tests for QueryParser
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 
-// Load QueryParser from source
-let QueryParser;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-beforeAll(() => {
-  const code = readFileSync(resolve(__dirname, '../../lib/query-parser.js'), 'utf8');
-  // Execute in context to get the class
-  eval(code);
-  QueryParser = global.QueryParser || eval('QueryParser');
-});
+// Load and evaluate QueryParser source
+const code = readFileSync(resolve(__dirname, '../../lib/query-parser.js'), 'utf8');
+
+// Create a mock global context and execute the code
+const createQueryParser = () => {
+  const context = { QueryParser: null };
+  const wrappedCode = `(function() { ${code}; return QueryParser; })()`;
+  return eval(wrappedCode);
+};
+
+const QueryParser = createQueryParser();
 
 describe('QueryParser', () => {
   let parser;
 
-  beforeAll(() => {
+  beforeEach(() => {
     parser = new QueryParser();
   });
 
@@ -102,8 +108,13 @@ describe('QueryParser', () => {
   });
 
   describe('Title and URL filters', () => {
-    it('should parse title filter', () => {
-      const result = parser.parse('title:search term');
+    it('should parse title filter (single word)', () => {
+      const result = parser.parse('title:search');
+      expect(result.title).toBe('search');
+    });
+
+    it('should parse title filter (quoted multi-word)', () => {
+      const result = parser.parse('title:"search term"');
       expect(result.title).toBe('search term');
     });
 
