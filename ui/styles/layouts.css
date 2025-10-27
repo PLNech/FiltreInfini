@@ -240,4 +240,24 @@
   .tabs-section__bulk-actions .btn {
     flex: 1;
   }
+
+  /* Mobile: Allow text wrapping instead of nowrap */
+  .tab-item__title {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-wrap: break-word;
+    line-height: 1.4;
+  }
+
+  .tab-item__domain {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-wrap: break-word;
+  }
+
+  .tab-item__meta {
+    flex-wrap: wrap;
+  }
 }
