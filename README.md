@@ -94,7 +94,18 @@ Bulk operations: Select multiple tabs → Move to group or close
 - Smooth scrolling
 - Responsive layout
 - Lazy loading images
-- No horizontal overflow
+- Text wrapping on mobile (titles and domains fully readable)
+
+## Firefox Android: First-Run Note
+
+Due to a [Firefox Android limitation](ANDROID_TABS_ISSUE.md), the extension uses **progressive tab discovery**:
+
+1. After installing, you'll see only currently active tabs
+2. **Cycle through your tabs once** by swiping through them
+3. FiltreInfini will track them as you go
+4. Tracked tabs persist across sessions
+
+This is a workaround for [Bug 1583281](https://bugzilla.mozilla.org/show_bug.cgi?id=1583281) where `browser.tabs.query()` doesn't return unloaded tabs on Android.
 
 ## Development
 
