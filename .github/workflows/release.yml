@@ -32,15 +32,16 @@ jobs:
       - name: Build extension
         run: npm run build
 
-      - name: Sign extension (if credentials available)
-        if: ${{ secrets.WEB_EXT_API_KEY != '' && secrets.WEB_EXT_API_SECRET != '' }}
-        run: |
-          npx web-ext sign \
-            --source-dir=. \
-            --artifacts-dir=web-ext-artifacts \
-            --api-key=${{ secrets.WEB_EXT_API_KEY }} \
-            --api-secret=${{ secrets.WEB_EXT_API_SECRET }} \
-            --channel=unlisted
+      # Signing step - disabled until AMO credentials are available
+      # To enable: Add WEB_EXT_API_KEY and WEB_EXT_API_SECRET to GitHub Secrets
+      # - name: Sign extension
+      #   run: |
+      #     npx web-ext sign \
+      #       --source-dir=. \
+      #       --artifacts-dir=web-ext-artifacts \
+      #       --api-key=${{ secrets.WEB_EXT_API_KEY }} \
+      #       --api-secret=${{ secrets.WEB_EXT_API_SECRET }} \
+      #       --channel=unlisted
 
       - name: Get version from manifest
         id: version
