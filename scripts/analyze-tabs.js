@@ -311,7 +311,7 @@ class DownloadManager {
 
       clearTimeout(timeoutId);
 
-      // Paywall/403 detected - try with different headers first, then archive.ph
+      // Paywall/403 detected - try: 1) referer 2) archive.ph 3) wayback
       if (response.status === 403 || response.status === 402) {
         const attempt = this.attempts.get(url);
 
@@ -323,10 +323,20 @@ class DownloadManager {
         // Second retry: try archive.ph
         if (attempt === 2) {
           console.log(`\n   [paywall] ${url} - trying archive.ph...`);
-          return await this.fetchFromArchive(url);
+          try {
+            return await this.fetchFromArchivePh(url);
+          } catch (archiveError) {
+            throw new Error(`HTTP 403 (archive.ph failed, will try wayback)`);
+          }
         }
 
-        // Third retry: give up
+        // Third retry: try Wayback Machine
+        if (attempt === 3) {
+          console.log(`\n   [wayback] ${url} - trying archive.org...`);
+          return await this.fetchFromWayback(url);
+        }
+
+        // Give up after all attempts
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -356,7 +366,7 @@ class DownloadManager {
   /**
    * Try to fetch from archive.ph
    */
-  async fetchFromArchive(originalUrl) {
+  async fetchFromArchivePh(originalUrl) {
     try {
       const archiveUrl = `https://archive.ph/${originalUrl}`;
       const controller = new AbortController();
@@ -378,7 +388,7 @@ class DownloadManager {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Archive HTTP ${response.status}`);
+        throw new Error(`Archive.ph HTTP ${response.status}`);
       }
 
       const html = await response.text();
@@ -392,7 +402,73 @@ class DownloadManager {
       const wordCount = textContent.split(/\s+/).length;
       return Math.max(1, Math.round(wordCount / 200));
     } catch (error) {
-      throw new Error(`Archive failed: ${error.message}`);
+      throw new Error(`Archive.ph failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Try to fetch from Wayback Machine (archive.org)
+   * Uses the most recent snapshot available
+   */
+  async fetchFromWayback(originalUrl) {
+    try {
+      // Get most recent snapshot from Wayback availability API
+      const availabilityUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(originalUrl)}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
+
+      const availResponse = await fetch(availabilityUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0'
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!availResponse.ok) {
+        throw new Error(`Wayback API HTTP ${availResponse.status}`);
+      }
+
+      const availData = await availResponse.json();
+
+      if (!availData.archived_snapshots?.closest?.url) {
+        throw new Error('No Wayback snapshot available');
+      }
+
+      const snapshotUrl = availData.archived_snapshots.closest.url;
+      console.log(`\n   [wayback] Found snapshot: ${snapshotUrl}`);
+
+      // Fetch the snapshot
+      const controller2 = new AbortController();
+      const timeoutId2 = setTimeout(() => controller2.abort(), this.TIMEOUT_MS);
+
+      const response = await fetch(snapshotUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        },
+        signal: controller2.signal
+      });
+
+      clearTimeout(timeoutId2);
+
+      if (!response.ok) {
+        throw new Error(`Wayback snapshot HTTP ${response.status}`);
+      }
+
+      const html = await response.text();
+      const textContent = html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const wordCount = textContent.split(/\s+/).length;
+      return Math.max(1, Math.round(wordCount / 200));
+    } catch (error) {
+      throw new Error(`Wayback failed: ${error.message}`);
     }
   }
 
@@ -435,10 +511,18 @@ class DownloadManager {
           console.log(`\n   [fetch error] ${url} (attempt ${attempt}/${this.MAX_RETRIES}): ${error.message} - queuing retry...`);
           this.queue.push(url); // Add to END of queue
         } else {
-          // Final failure
-          console.log(`\n   [fetch FAILED] ${url} (gave up after ${this.MAX_RETRIES} attempts): ${error.message}`);
-          this.results.set(url, null);
-          this.failureCount++;
+          // Final failure - last resort: try Wayback Machine for any error
+          console.log(`\n   [last resort] ${url} - trying Wayback Machine before giving up...`);
+          try {
+            const readingTime = await this.fetchFromWayback(url);
+            this.results.set(url, readingTime);
+            this.successCount++;
+            console.log(`\n   [wayback SUCCESS] ${url} - rescued from Wayback!`);
+          } catch (waybackError) {
+            console.log(`\n   [fetch FAILED] ${url} (gave up after ${this.MAX_RETRIES} attempts + wayback): ${error.message}`);
+            this.results.set(url, null);
+            this.failureCount++;
+          }
         }
       }
     }
