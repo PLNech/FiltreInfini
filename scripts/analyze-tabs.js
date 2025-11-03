@@ -235,28 +235,51 @@ class DownloadManager {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
 
+      const attempt = this.attempts.get(url);
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none'
+      };
+
+      // On 2nd attempt, add Referer to look like natural navigation
+      if (attempt >= 2) {
+        const urlObj = new URL(url);
+        headers['Referer'] = `${urlObj.protocol}//${urlObj.host}/`;
+        headers['Sec-Fetch-Site'] = 'same-origin';
+      }
+
       const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'DNT': '1',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-          'Sec-Fetch-Dest': 'document',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'none'
-        },
+        headers,
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
 
-      // Paywall/403 detected - try archive.ph
+      // Paywall/403 detected - try with different headers first, then archive.ph
       if (response.status === 403 || response.status === 402) {
-        console.log(`\n   [paywall] ${url} - trying archive.ph...`);
-        return await this.fetchFromArchive(url);
+        const attempt = this.attempts.get(url);
+
+        // First retry: try with Referer header (looks like natural navigation)
+        if (attempt === 1) {
+          throw new Error(`HTTP 403 (will retry with referer)`);
+        }
+
+        // Second retry: try archive.ph
+        if (attempt === 2) {
+          console.log(`\n   [paywall] ${url} - trying archive.ph...`);
+          return await this.fetchFromArchive(url);
+        }
+
+        // Third retry: give up
+        throw new Error(`HTTP ${response.status}`);
       }
 
       if (!response.ok) {
@@ -684,13 +707,13 @@ async function main() {
     // Wait for all downloads to complete
     await queuePromise;
 
-    const stats = downloadManager.getStats();
-    console.log(`\r   Progress: ${sample.length}/${sample.length} | DL: ${stats.success}✓ ${stats.failure}✗ ${stats.pending}⏳`);
+    const dlStats = downloadManager.getStats();
+    console.log(`\r   Progress: ${sample.length}/${sample.length} | DL: ${dlStats.success}✓ ${dlStats.failure}✗ ${dlStats.pending}⏳`);
 
     const analysisTime = Date.now() - startAnalysis;
     console.log(`\n✓ Analysis complete in ${(analysisTime / 1000).toFixed(1)}s`);
     console.log(`  Average: ${Math.round(analysisTime / results.length)}ms per tab`);
-    console.log(`  Reading time: ${stats.success} successful, ${stats.failure} failed (${((stats.success / results.length) * 100).toFixed(1)}% success rate)\n`);
+    console.log(`  Reading time: ${dlStats.success} successful, ${dlStats.failure} failed (${((dlStats.success / results.length) * 100).toFixed(1)}% success rate)\n`);
 
     // Find similar tabs
     findSimilarTabs(results);
