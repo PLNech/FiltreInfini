@@ -53,6 +53,11 @@ function setupEventListeners() {
     btn.addEventListener('click', (e) => handleCategoryFilter(e.target.dataset.category));
   });
 
+  // Source filters
+  document.querySelectorAll('.source-filter-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => handleSourceFilter(e.target.dataset.source));
+  });
+
   // Bulk actions
   document.getElementById('bulk-main-btn').addEventListener('click', () => handleBulkGroup('main'));
   document.getElementById('bulk-staging-btn').addEventListener('click', () => handleBulkGroup('staging'));
@@ -698,6 +703,32 @@ async function handleCategoryFilter(category) {
 
     await renderTabList(filtered);
   }
+}
+
+/**
+ * Handle source filter buttons (local/synced/all)
+ */
+async function handleSourceFilter(source) {
+  // Remove active class from all source buttons
+  document.querySelectorAll('.source-filter-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+
+  // Add active class to clicked button
+  event.target.classList.add('active');
+
+  let filtered;
+  if (source === 'all') {
+    filtered = allTabs;
+  } else if (source === 'local') {
+    filtered = allTabs.filter(tab => tab.source === 'local');
+  } else if (source === 'synced') {
+    filtered = allTabs.filter(tab => tab.source === 'synced');
+  }
+
+  currentTabs = filtered;
+  await renderTabList(currentTabs);
+  await updateStatistics();
 }
 
 /**
