@@ -192,11 +192,12 @@ function extractFeatures(tab) {
 }
 
 /**
- * Fetch page content and calculate reading time
+ * Fetch page content and calculate reading time (with retries)
  * @param {string} url - Tab URL
+ * @param {number} attempt - Current attempt number (1-3)
  * @returns {Promise<number>} Reading time in minutes (or null on error)
  */
-async function fetchReadingTime(url) {
+async function fetchReadingTime(url, attempt = 1) {
   try {
     // Skip non-http URLs
     if (!url.startsWith('http')) {
@@ -211,7 +212,7 @@ async function fetchReadingTime(url) {
     });
 
     if (!response.ok) {
-      return null;
+      throw new Error(`HTTP ${response.status}`);
     }
 
     const html = await response.text();
@@ -229,8 +230,14 @@ async function fetchReadingTime(url) {
 
     return readingTimeMinutes;
   } catch (error) {
-    // Log all errors for debugging
-    console.log(`\n   [fetch error] ${url}: ${error.message}`);
+    // Retry up to 3 times
+    if (attempt < 3) {
+      console.log(`\n   [fetch error] ${url} (attempt ${attempt}/3): ${error.message} - retrying...`);
+      return fetchReadingTime(url, attempt + 1);
+    }
+
+    // Final failure after 3 attempts
+    console.log(`\n   [fetch FAILED] ${url} (gave up after 3 attempts): ${error.message}`);
     return null;
   }
 }
