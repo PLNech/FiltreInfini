@@ -144,8 +144,8 @@ function setupEventListeners() {
     chartSize = parseInt(e.target.value);
     document.getElementById('chart-size-value').textContent = `Top ${chartSize}`;
 
-    // Re-render current tab's charts
-    if (analysisData && currentChartTab !== 'overview') {
+    // Re-render current tab's charts (including overview)
+    if (analysisData && currentChartTab) {
       renderChartsForTab(currentChartTab);
     }
   });
