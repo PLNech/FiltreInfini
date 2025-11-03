@@ -15,6 +15,8 @@
       <div class="header__actions">
         <button id="api-test-btn" class="btn btn--tertiary" title="Test Firefox APIs">🔍 API Test</button>
         <button id="fetch-all-btn" class="btn btn--tertiary" title="Reload all metadata">🔄 Fetch All</button>
+        <button id="import-sync-btn" class="btn btn--secondary" title="Import Firefox Sync tabs">📥 Import Synced Tabs</button>
+        <input type="file" id="sync-file-input" accept=".json" style="display: none;">
         <button id="export-btn" class="btn btn--secondary">Export CSV</button>
       </div>
     </header>
@@ -152,6 +154,56 @@
     </div>
   </div>
 
+  <!-- Import Guidance Modal -->
+  <div id="import-guide-modal" class="modal" style="display: none;">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--wide">
+      <div class="modal__header">
+        <h2 class="modal__title">Import Synced Tabs from Firefox</h2>
+        <button class="modal__close" id="import-guide-close-btn">×</button>
+      </div>
+      <div class="modal__body">
+        <p>Firefox Android has a limitation where browser.tabs.query() only returns loaded tabs. To work around this, you can import tabs from Firefox Sync data.</p>
+
+        <h3>Steps to Extract Synced Tabs:</h3>
+        <ol>
+          <li>Open Firefox on your desktop computer</li>
+          <li>Press <kbd>Ctrl+Shift+K</kbd> (or <kbd>Cmd+Opt+K</kbd> on Mac) to open the Web Console</li>
+          <li>Copy and paste the following script into the console:</li>
+        </ol>
+
+        <div class="code-block">
+          <pre id="sync-extraction-script">SyncedTabs._internal.getTabClients().then(arrDevices => {
+  const json = JSON.stringify(arrDevices, null, 2);
+  const blob = new Blob([json], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'synced-tabs-' + Date.now() + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  console.log('Downloaded!');
+});</pre>
+          <button id="copy-script-btn" class="btn btn--small" style="margin-top: 8px;">📋 Copy Script</button>
+        </div>
+
+        <ol start="4">
+          <li>Press <kbd>Enter</kbd> to execute the script</li>
+          <li>A file named <code>synced-tabs-TIMESTAMP.json</code> will be downloaded</li>
+          <li>Click the "Choose File" button below to import it</li>
+        </ol>
+
+        <div style="margin-top: 20px; text-align: center;">
+          <button id="choose-file-btn" class="btn btn--primary">Choose File to Import</button>
+        </div>
+
+        <div class="info-box" style="margin-top: 20px;">
+          <strong>Note:</strong> This data includes URLs, titles, and device names from your synced Firefox instances. The file stays on your device and is never uploaded anywhere.
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Load libraries and main script -->
   <script src="../lib/storage.js"></script>
   <script src="../lib/group-manager.js"></script>
@@ -162,6 +214,7 @@
   <script src="../lib/export.js"></script>
   <script src="../lib/brand-colors.js"></script>
   <script src="../lib/categorizer.js"></script>
+  <script src="../lib/sync-parser.js"></script>
   <script src="manager.js"></script>
 </body>
 </html>

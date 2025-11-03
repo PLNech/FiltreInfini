@@ -5,22 +5,30 @@ All notable changes to FiltreInfini will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.1] - 2025-01-27
-
-### Fixed
-- **Mobile Text Overflow**: Fixed unreadable text on mobile vertical mode - titles and domains now wrap properly instead of being cut off
-- **Firefox Android Tab Discovery**: Implemented progressive tab tracking to work around Firefox Android limitation where `browser.tabs.query()` doesn't return unloaded tabs
-  - Extension now tracks tabs as you cycle through them
-  - Builds persistent database of discovered tabs across sessions
-  - Merges tracked tabs with currently visible tabs for complete view
+## [0.1.1] - 2025-11-03
 
 ### Added
+- **Firefox Sync Tab Import**: Import tabs from Firefox Sync data to work around Android limitation
+  - Import button with guided extraction process
+  - Parses synced-tabs JSON from Firefox desktop console
+  - Visual indicators showing device name and sync date
+  - Supports multiple devices simultaneously
+  - Persistent storage of imported tabs
 - Progressive tab discovery system for Firefox Android compatibility
 - Event listeners to track tab activation, creation, and updates
 - Persistent tab database in storage.local
 
+### Fixed
+- **Mobile Text Overflow**: Fixed unreadable text on mobile vertical mode - titles and domains now wrap properly instead of being cut off
+- **Firefox Android Tab Discovery**: Implemented workaround for Firefox Android limitation where `browser.tabs.query()` doesn't return unloaded tabs
+  - Extension now tracks tabs as you cycle through them
+  - Builds persistent database of discovered tabs across sessions
+  - Merges tracked tabs with currently visible tabs for complete view
+  - NEW: Import from Firefox Sync data for instant access to all mobile tabs
+
 ### Documentation
 - Created `ANDROID_TABS_ISSUE.md` documenting Firefox Android limitation and workarounds
+- Added import guidance modal with extraction script
 
 ## [0.1.0] - 2025-01-27 (Initial Release)
 

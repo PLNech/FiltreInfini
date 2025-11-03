@@ -10,7 +10,7 @@
     "test:unit:ui": "vitest --ui",
     "test:e2e": "playwright test",
     "test:ui": "playwright test --ui",
-    "dev": "web-ext run --source-dir=. --target=firefox-desktop --start-url about:debugging#/runtime/this-firefox --start-url about:blank",
+    "dev": "web-ext run --source-dir=. --target=firefox-desktop --start-url about:debugging#/runtime/this-firefox",
     "dev:android": "web-ext run --source-dir=. --target=firefox-android",
     "lint": "web-ext lint --source-dir=.",
     "build": "web-ext build --source-dir=. --artifacts-dir=web-ext-artifacts"

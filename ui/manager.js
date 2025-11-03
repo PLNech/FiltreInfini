@@ -74,6 +74,18 @@ function setupEventListeners() {
   // View switcher
   document.getElementById('view-list-btn').addEventListener('click', () => switchView('list'));
   document.getElementById('view-groups-btn').addEventListener('click', () => switchView('groups'));
+
+  // Import synced tabs
+  document.getElementById('import-sync-btn').addEventListener('click', handleImportSyncClick);
+  document.getElementById('sync-file-input').addEventListener('change', handleSyncFileSelected);
+  document.getElementById('import-guide-close-btn').addEventListener('click', closeImportGuideModal);
+  document.getElementById('choose-file-btn').addEventListener('click', () => {
+    document.getElementById('sync-file-input').click();
+  });
+  document.getElementById('copy-script-btn').addEventListener('click', handleCopyScript);
+
+  // Close modal on overlay click
+  document.getElementById('import-guide-modal').querySelector('.modal__overlay').addEventListener('click', closeImportGuideModal);
 }
 
 /**
@@ -90,10 +102,22 @@ function handleSearchInput() {
  * Load all tabs and display
  */
 async function loadAllTabs() {
-  allTabs = await tabQuery.getAllTabsWithMetadata(showInternalTabs);
+  // Get local tabs
+  const localTabs = await tabQuery.getAllTabsWithMetadata(showInternalTabs);
+
+  // Mark all local tabs with source
+  for (const tab of localTabs) {
+    tab.source = 'local';
+  }
+
+  // Get synced tabs from storage
+  const syncedTabs = await loadSyncedTabs();
+
+  // Merge local and synced tabs
+  allTabs = [...localTabs, ...syncedTabs];
   currentTabs = allTabs;
 
-  // Calculate domain counts
+  // Calculate domain counts (across both local and synced)
   domainCounts = {};
   for (const tab of allTabs) {
     domainCounts[tab.domain] = (domainCounts[tab.domain] || 0) + 1;
@@ -111,6 +135,7 @@ async function loadAllTabs() {
 /**
  * Prefetch metadata for all tabs in the background
  * Only fetches tabs that don't have cached metadata yet
+ * Works for both local tabs (via content scripts) and synced tabs (via direct URL fetch)
  */
 async function prefetchMetadataInBackground() {
   console.log('[Metadata] Starting background prefetch...');
@@ -330,6 +355,24 @@ async function createTabItemElement(tab, group) {
   meta.appendChild(age);
   meta.appendChild(categoryBadge);
 
+  // Synced tab indicator
+  if (tab.source === 'synced') {
+    const syncBadge = document.createElement('span');
+    syncBadge.className = 'tab-item__sync-badge';
+
+    // Format device name and sync date
+    const parser = new SyncParser();
+    const syncDateText = parser.formatSyncDate(tab.syncExportDate);
+
+    syncBadge.textContent = `📱 ${tab.deviceName} (synced ${syncDateText})`;
+    syncBadge.style.fontSize = '0.85em';
+    syncBadge.style.color = '#6B7280';
+    syncBadge.style.fontStyle = 'italic';
+    syncBadge.title = `Synced from ${tab.deviceName} on ${new Date(tab.syncExportDate).toLocaleString()}`;
+
+    meta.appendChild(syncBadge);
+  }
+
   // Add thumbnail first if available
   if (thumbnail) {
     info.appendChild(thumbnail);
@@ -345,17 +388,20 @@ async function createTabItemElement(tab, group) {
   const actions = document.createElement('div');
   actions.className = 'tab-item__actions';
 
-  // Go to tab button
-  const goToBtn = document.createElement('button');
-  goToBtn.className = 'tab-item__action-btn';
-  goToBtn.textContent = '➡️';
-  goToBtn.title = 'Go to tab';
-  goToBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    browser.tabs.update(tab.id, { active: true });
-  });
+  // Only show "Go to tab" button for local tabs
+  if (tab.source === 'local') {
+    const goToBtn = document.createElement('button');
+    goToBtn.className = 'tab-item__action-btn';
+    goToBtn.textContent = '➡️';
+    goToBtn.title = 'Go to tab';
+    goToBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      browser.tabs.update(tab.id, { active: true });
+    });
+    actions.appendChild(goToBtn);
+  }
 
-  // Load metadata button
+  // Load metadata button (for all tabs)
   const metadataBtn = document.createElement('button');
   metadataBtn.className = 'tab-item__action-btn';
   metadataBtn.textContent = '📊';
@@ -365,7 +411,6 @@ async function createTabItemElement(tab, group) {
     handleLoadMetadata(tab);
   });
 
-  actions.appendChild(goToBtn);
   actions.appendChild(metadataBtn);
   actions.appendChild(badge);
 
@@ -373,12 +418,21 @@ async function createTabItemElement(tab, group) {
   item.appendChild(info);
   item.appendChild(actions);
 
-  // Make item clickable to focus tab
-  item.addEventListener('click', (e) => {
-    if (e.target !== checkbox) {
-      browser.tabs.update(tab.id, { active: true });
-    }
-  });
+  // Make item clickable to focus tab (only for local tabs)
+  if (tab.source === 'local') {
+    item.addEventListener('click', (e) => {
+      if (e.target !== checkbox) {
+        browser.tabs.update(tab.id, { active: true });
+      }
+    });
+  } else {
+    // For synced tabs, just show URL in console on click
+    item.addEventListener('click', (e) => {
+      if (e.target !== checkbox) {
+        console.log(`[Synced Tab] ${tab.title}: ${tab.url}`);
+      }
+    });
+  }
 
   return item;
 }
@@ -398,20 +452,85 @@ async function handleRunQuery() {
   // Parse query
   const filters = queryParser.parse(queryString);
 
-  // Execute query
-  const results = await tabQuery.executeQuery(filters);
-
-  // Add metadata
-  const resultsWithMetadata = results.map(tab => ({
-    ...tab,
-    age: tabQuery.calculateAge(tab),
-    domain: tabQuery.extractDomain(tab.url),
-    ageFormatted: tabQuery.formatAge(tabQuery.calculateAge(tab))
-  }));
+  // Execute query on allTabs (includes both local and synced)
+  const results = filterTabs(allTabs, filters);
 
   // Render results
-  currentTabs = resultsWithMetadata;
+  currentTabs = results;
   await renderTabList(currentTabs);
+}
+
+/**
+ * Filter tabs based on parsed query filters
+ * Works on any tab array (local + synced)
+ */
+function filterTabs(tabs, filters) {
+  return tabs.filter(tab => {
+    // Domain filter
+    if (filters.domain) {
+      const pattern = filters.domain.replace(/^https?:\/\//, '');
+      if (pattern.includes('*')) {
+        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+        if (!regex.test(tab.domain)) return false;
+      } else if (!tab.domain.includes(pattern)) {
+        return false;
+      }
+    }
+
+    // Age filter
+    if (filters.age !== null) {
+      const operator = filters.ageOperator || '>';
+      const tabAgeDays = tab.ageDays || 0;
+
+      switch (operator) {
+        case '>':
+          if (tabAgeDays <= filters.age) return false;
+          break;
+        case '>=':
+          if (tabAgeDays < filters.age) return false;
+          break;
+        case '<':
+          if (tabAgeDays >= filters.age) return false;
+          break;
+        case '<=':
+          if (tabAgeDays > filters.age) return false;
+          break;
+        case '=':
+          if (tabAgeDays !== filters.age) return false;
+          break;
+      }
+    }
+
+    // Title filter
+    if (filters.title) {
+      const lowerSearch = filters.title.toLowerCase();
+      if (!tab.title.toLowerCase().includes(lowerSearch)) {
+        return false;
+      }
+    }
+
+    // URL filter
+    if (filters.url) {
+      const pattern = filters.url;
+      if (pattern.includes('*')) {
+        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+        if (!regex.test(tab.url)) return false;
+      } else if (!tab.url.includes(pattern)) {
+        return false;
+      }
+    }
+
+    // Free text search (searches title, url, domain)
+    if (filters.text) {
+      const lowerSearch = filters.text.toLowerCase();
+      const searchableText = `${tab.title} ${tab.url} ${tab.domain}`.toLowerCase();
+      if (!searchableText.includes(lowerSearch)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 }
 
 /**
@@ -583,18 +702,32 @@ async function handleBulkClose() {
     return;
   }
 
-  const confirmed = confirm(`Close ${selectedTabIds.size} tabs?`);
+  // Filter out synced tabs (they can't be closed as they're not real browser tabs)
+  const localTabIds = Array.from(selectedTabIds).filter(tabId => {
+    const tab = allTabs.find(t => t.id === tabId);
+    return tab && tab.source === 'local';
+  });
+
+  if (localTabIds.length === 0) {
+    alert('No local tabs selected. Synced tabs cannot be closed.');
+    return;
+  }
+
+  const skippedCount = selectedTabIds.size - localTabIds.length;
+  const confirmMsg = skippedCount > 0
+    ? `Close ${localTabIds.length} local tabs?\n(Skipping ${skippedCount} synced tabs)`
+    : `Close ${localTabIds.length} tabs?`;
+
+  const confirmed = confirm(confirmMsg);
   if (!confirmed) {
     return;
   }
 
-  const idsArray = Array.from(selectedTabIds);
-
   try {
-    await browser.tabs.remove(idsArray);
+    await browser.tabs.remove(localTabIds);
 
     // Clean up storage
-    for (let tabId of idsArray) {
+    for (let tabId of localTabIds) {
       await Storage.remove(`tab-${tabId}`);
     }
 
@@ -1201,6 +1334,109 @@ async function handleApiTest() {
   }
 
   alert('API test complete! Check browser console for results.');
+}
+
+/**
+ * Handle Import Sync button click - show guidance modal
+ */
+function handleImportSyncClick() {
+  const modal = document.getElementById('import-guide-modal');
+  modal.style.display = 'flex';
+}
+
+/**
+ * Close import guidance modal
+ */
+function closeImportGuideModal() {
+  const modal = document.getElementById('import-guide-modal');
+  modal.style.display = 'none';
+}
+
+/**
+ * Handle copy script button - copy extraction script to clipboard
+ */
+async function handleCopyScript() {
+  const scriptEl = document.getElementById('sync-extraction-script');
+  const btn = document.getElementById('copy-script-btn');
+  const originalText = btn.textContent;
+
+  try {
+    await navigator.clipboard.writeText(scriptEl.textContent);
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => {
+      btn.textContent = originalText;
+    }, 2000);
+  } catch (error) {
+    console.error('Failed to copy script:', error);
+    alert('Failed to copy script. Please select and copy manually.');
+  }
+}
+
+/**
+ * Handle sync file selected - parse and import
+ */
+async function handleSyncFileSelected(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  // Close the guidance modal
+  closeImportGuideModal();
+
+  // Show loading state
+  const btn = document.getElementById('import-sync-btn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Importing...';
+
+  try {
+    // Read and parse file
+    const content = await file.text();
+    const syncedData = JSON.parse(content);
+
+    // Parse using SyncParser
+    const parser = new SyncParser();
+    const result = parser.parse(syncedData, file.name);
+
+    console.log(`[Sync Import] Parsed ${result.totalTabs} tabs from ${result.deviceCount} devices`);
+    console.log(`[Sync Import] Sync export date: ${new Date(result.syncExportDate).toLocaleString()}`);
+
+    // Store synced tabs in storage.local
+    await Storage.set('syncedTabs', result.tabs);
+    await Storage.set('syncMetadata', {
+      syncExportDate: result.syncExportDate,
+      deviceCount: result.deviceCount,
+      totalTabs: result.totalTabs,
+      importedAt: Date.now()
+    });
+
+    // Reload to merge with local tabs
+    await loadAllTabs();
+    await updateStatistics();
+
+    btn.textContent = '✓ Imported!';
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }, 2000);
+
+    alert(`Successfully imported ${result.totalTabs} tabs from ${result.deviceCount} devices!`);
+  } catch (error) {
+    console.error('[Sync Import] Failed to import:', error);
+    btn.textContent = originalText;
+    btn.disabled = false;
+    alert(`Failed to import synced tabs:\n${error.message}`);
+  }
+
+  // Reset file input
+  event.target.value = '';
+}
+
+/**
+ * Load synced tabs from storage and merge with local tabs
+ */
+async function loadSyncedTabs() {
+  const syncedTabs = await Storage.get('syncedTabs') || [];
+  return syncedTabs;
 }
 
 // TODO: Add keyboard shortcuts (Ctrl+A for select all, etc.)
