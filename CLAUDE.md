@@ -259,3 +259,5 @@ GPLv3 - Freedom to use, modify, distribute
 ---
 
 **Remember**: The goal is to scratch the user's itch with Firefox mobile's tab UX. Ship something useful fast, then make it great.
+- remember never run webext ask user to reload in ff about:Debuggig
+- remember never run firefox or web ext yourself, user always relads manually in about:debugging

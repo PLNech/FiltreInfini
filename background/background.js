@@ -186,12 +186,24 @@ browser.runtime.onInstalled.addListener(async (details) => {
 
   // Initialize progressive tab tracker
   await tabTracker.init();
+
+  // Trigger ML Worker initialization (lazy load in background)
+  console.log('[Background] Triggering ML Worker initialization...');
+  MLClassifierWorker.getInstance().catch(err => {
+    console.error('[Background] ML Worker failed to initialize:', err);
+  });
 });
 
 // Initialize tab tracker on browser startup
 browser.runtime.onStartup.addListener(async () => {
   console.log('FiltreInfini starting up...');
   await tabTracker.init();
+
+  // Trigger ML Worker initialization (lazy load in background)
+  console.log('[Background] Triggering ML Worker initialization...');
+  MLClassifierWorker.getInstance().catch(err => {
+    console.error('[Background] ML Worker failed to initialize:', err);
+  });
 });
 
 // Handle alarms
@@ -237,6 +249,98 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     }
   }
 });
+
+// =======================
+// ML Classification Message Handlers
+// =======================
+
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handle ML classification requests
+  if (message.action === 'classifyTab') {
+    handleClassifyTab(message, sendResponse);
+    return true; // Keep channel open for async response
+  }
+
+  if (message.action === 'classifyBatch') {
+    handleClassifyBatch(message, sendResponse);
+    return true;
+  }
+
+  if (message.action === 'getMLStatus') {
+    sendResponse({
+      ready: MLClassifierWorker.instance !== null,
+      loading: MLClassifierWorker.isLoading,
+      error: MLClassifierWorker.loadError?.message || null
+    });
+    return false;
+  }
+});
+
+async function handleClassifyTab(message, sendResponse) {
+  try {
+    const { tab, sessionContext } = message;
+    console.log('[Background] Classifying tab:', tab.title);
+
+    const result = await MLClassifierWorker.classifyTab(tab, sessionContext);
+
+    // Store in cache
+    if (tab.id) {
+      const metadata = await metadataStorage.getMetadata(tab.id) || {};
+      metadata.mlClassifications = result.classifications;
+      metadata.mlMetadata = result.metadata;
+      await metadataStorage.setMetadata(tab.id, metadata);
+    }
+
+    sendResponse({ success: true, result });
+  } catch (error) {
+    console.error('[Background] Classification error:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleClassifyBatch(message, sendResponse) {
+  try {
+    const { tabs, sessionContext, onProgress } = message;
+    console.log(`[Background] Classifying batch: ${tabs.length} tabs`);
+
+    const results = [];
+    for (let i = 0; i < tabs.length; i++) {
+      const tab = tabs[i];
+      const result = await MLClassifierWorker.classifyTab(tab, sessionContext);
+
+      // Store in cache
+      if (tab.id) {
+        const metadata = await metadataStorage.getMetadata(tab.id) || {};
+        metadata.mlClassifications = result.classifications;
+        metadata.mlMetadata = result.metadata;
+        await metadataStorage.setMetadata(tab.id, metadata);
+      }
+
+      results.push({
+        tabId: tab.id,
+        ...result
+      });
+
+      // Send progress update (every 5 tabs)
+      if (i % 5 === 0 && onProgress) {
+        try {
+          browser.runtime.sendMessage({
+            action: 'classifyProgress',
+            processed: i + 1,
+            total: tabs.length
+          });
+        } catch (e) {
+          // Ignore if UI is closed
+        }
+      }
+    }
+
+    sendResponse({ success: true, results });
+  } catch (error) {
+    console.error('[Background] Batch classification error:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
 
 console.log('FiltreInfini background script loaded');
 

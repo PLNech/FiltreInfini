@@ -19,6 +19,9 @@ let currentView = 'list'; // 'list' or 'groups'
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('FiltreInfini manager loaded');
 
+  // Start ML model pre-loading in background (non-blocking)
+  startModelPreloading();
+
   // Initial load
   await loadAllTabs();
   await updateStatistics();
@@ -69,6 +72,7 @@ function setupEventListeners() {
 
   // Fetch All Metadata
   document.getElementById('fetch-all-btn').addEventListener('click', handleFetchAll);
+  document.getElementById('classify-all-btn').addEventListener('click', handleClassifyAll);
 
   // API Test
   document.getElementById('api-test-btn').addEventListener('click', handleApiTest);
@@ -91,6 +95,32 @@ function setupEventListeners() {
 
   // Close modal on overlay click
   document.getElementById('import-guide-modal').querySelector('.modal__overlay').addEventListener('click', closeImportGuideModal);
+
+  // ML Debug Modal
+  const mlDebugBtn = document.getElementById('ml-debug-btn');
+  if (mlDebugBtn) {
+    mlDebugBtn.addEventListener('click', openMLDebugModal);
+  }
+
+  const mlDebugModal = document.getElementById('ml-debug-modal');
+  if (mlDebugModal) {
+    document.getElementById('ml-debug-close-btn').addEventListener('click', closeMLDebugModal);
+    mlDebugModal.querySelector('.modal__overlay').addEventListener('click', closeMLDebugModal);
+
+    // ML Debug Actions
+    document.querySelectorAll('.ml-preset-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => loadMLPreset(e.target.dataset.preset));
+    });
+    document.getElementById('ml-classify-single-btn').addEventListener('click', handleMLClassifySingle);
+    document.getElementById('ml-classify-batch-btn').addEventListener('click', handleMLClassifyBatch);
+    document.getElementById('ml-test-context-btn').addEventListener('click', handleMLTestContext);
+
+    // Individual model testing
+    document.getElementById('test-embeddings-btn').addEventListener('click', handleTestEmbeddings);
+    document.getElementById('test-classification-btn').addEventListener('click', handleTestClassification);
+    document.getElementById('test-ner-btn').addEventListener('click', handleTestNER);
+    document.getElementById('check-model-cache-btn').addEventListener('click', handleCheckModelCache);
+  }
 }
 
 /**
@@ -304,6 +334,73 @@ function formatReadingTime(minutes) {
 }
 
 /**
+ * Create ML classification badges element
+ * @param {Object} classifications - ML classification results
+ * @returns {HTMLElement|null} Container with badges or null
+ */
+function createMLBadges(classifications) {
+  if (!classifications) return null;
+
+  const container = document.createElement('span');
+  container.className = 'tab-item__ml-badges';
+  container.style.display = 'inline-flex';
+  container.style.gap = '4px';
+  container.style.marginLeft = '8px';
+
+  // Helper to create a single badge
+  const createBadge = (label, dimension, score) => {
+    const badge = document.createElement('span');
+    badge.className = `ml-badge ml-badge--${dimension}`;
+    badge.textContent = label;
+    badge.title = `${dimension}: ${label} (${(score * 100).toFixed(0)}%)`;
+
+    // Style based on confidence
+    const opacity = 0.5 + (score * 0.5); // 50-100% opacity
+    badge.style.fontSize = '0.75em';
+    badge.style.padding = '2px 6px';
+    badge.style.borderRadius = '3px';
+    badge.style.opacity = opacity;
+    badge.style.fontWeight = '500';
+
+    // Color coding by dimension
+    if (dimension === 'intent') {
+      badge.style.backgroundColor = '#DBEAFE'; // Light blue
+      badge.style.color = '#1E40AF';
+    } else if (dimension === 'status') {
+      badge.style.backgroundColor = '#DCFCE7'; // Light green
+      badge.style.color = '#166534';
+    } else if (dimension === 'contentType') {
+      badge.style.backgroundColor = '#FEF3C7'; // Light yellow
+      badge.style.color = '#92400E';
+    }
+
+    return badge;
+  };
+
+  // Add top label from each dimension (if confidence > 0.4)
+  const topIntent = classifications.intent?.topK[0];
+  if (topIntent && topIntent.score > 0.4) {
+    container.appendChild(createBadge(topIntent.label, 'intent', topIntent.score));
+  }
+
+  const topStatus = classifications.status?.topK[0];
+  if (topStatus && topStatus.score > 0.4) {
+    container.appendChild(createBadge(topStatus.label, 'status', topStatus.score));
+  }
+
+  const topContentType = classifications.contentType?.topK[0];
+  if (topContentType && topContentType.score > 0.4) {
+    // Shorten label if needed
+    let label = topContentType.label;
+    if (label === 'communication') label = 'comm';
+    container.appendChild(createBadge(label, 'contentType', topContentType.score));
+  }
+
+  // Only return if we have at least one badge
+  return container.children.length > 0 ? container : null;
+}
+
+/**
  * Create a single tab item element
  */
 async function createTabItemElement(tab, group) {
@@ -385,6 +482,14 @@ async function createTabItemElement(tab, group) {
   meta.appendChild(age);
   meta.appendChild(categoryBadge);
 
+  // ML Classification badges (if available)
+  if (metadata && metadata.mlClassifications) {
+    const mlBadges = createMLBadges(metadata.mlClassifications);
+    if (mlBadges) {
+      meta.appendChild(mlBadges);
+    }
+  }
+
   // Synced tab indicator
   if (tab.source === 'synced') {
     const syncBadge = document.createElement('span');
@@ -431,6 +536,16 @@ async function createTabItemElement(tab, group) {
     actions.appendChild(goToBtn);
   }
 
+  // ML Classify button (for all tabs)
+  const classifyBtn = document.createElement('button');
+  classifyBtn.className = 'tab-item__action-btn';
+  classifyBtn.textContent = '🧠';
+  classifyBtn.title = 'Classify this tab';
+  classifyBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await handleClassifySingleTab(tab, classifyBtn);
+  });
+
   // Load metadata button (for all tabs)
   const metadataBtn = document.createElement('button');
   metadataBtn.className = 'tab-item__action-btn';
@@ -441,6 +556,7 @@ async function createTabItemElement(tab, group) {
     handleLoadMetadata(tab);
   });
 
+  actions.appendChild(classifyBtn);
   actions.appendChild(metadataBtn);
   actions.appendChild(badge);
 
@@ -1547,6 +1663,677 @@ async function handleSyncFileSelected(event) {
 async function loadSyncedTabs() {
   const syncedTabs = await Storage.get('syncedTabs') || [];
   return syncedTabs;
+}
+
+// ============================================================================
+// ML Debug Modal Functions
+// ============================================================================
+
+/**
+ * ML Test Presets
+ */
+const ML_PRESETS = {
+  tech: {
+    id: 'test-tech',
+    title: 'Python Tutorial - Learn Python Programming',
+    url: 'https://docs.python.org/3/tutorial/',
+    domain: 'docs.python.org',
+    lastUsed: Date.now() - 2 * 60 * 60 * 1000,
+    inactive: false
+  },
+  shopping: {
+    id: 'test-shopping',
+    title: 'Buy iPhone 15 Pro - Apple Store',
+    url: 'https://www.apple.com/shop/buy-iphone',
+    domain: 'apple.com',
+    lastUsed: Date.now() - 1 * 60 * 60 * 1000,
+    inactive: false
+  },
+  social: {
+    id: 'test-social',
+    title: 'Gmail - Inbox',
+    url: 'https://mail.google.com/mail/u/0/',
+    domain: 'mail.google.com',
+    lastUsed: Date.now() - 30 * 60 * 1000,
+    inactive: false
+  },
+  news: {
+    id: 'test-news',
+    title: 'Breaking News - CNN International',
+    url: 'https://www.cnn.com/world',
+    domain: 'cnn.com',
+    lastUsed: Date.now() - 1 * 60 * 60 * 1000,
+    inactive: false
+  },
+  old: {
+    id: 'test-old',
+    title: 'Old API Documentation',
+    url: 'https://example.com/docs/api-v1',
+    domain: 'example.com',
+    lastUsed: Date.now() - 30 * 24 * 60 * 60 * 1000,
+    inactive: true
+  },
+  mixed: [
+    {
+      id: 'batch-1',
+      title: 'GitHub - Repository',
+      url: 'https://github.com/user/repo',
+      domain: 'github.com',
+      lastUsed: Date.now() - 1000,
+      inactive: false
+    },
+    {
+      id: 'batch-2',
+      title: 'Amazon - Shopping Cart',
+      url: 'https://www.amazon.com/cart',
+      domain: 'amazon.com',
+      lastUsed: Date.now() - 5000,
+      inactive: false
+    },
+    {
+      id: 'batch-3',
+      title: 'YouTube - Watch Later',
+      url: 'https://www.youtube.com/playlist?list=WL',
+      domain: 'youtube.com',
+      lastUsed: Date.now() - 10000,
+      inactive: false
+    }
+  ]
+};
+
+function openMLDebugModal() {
+  const modal = document.getElementById('ml-debug-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
+}
+
+function closeMLDebugModal() {
+  document.getElementById('ml-debug-modal').style.display = 'none';
+}
+
+function loadMLPreset(preset) {
+  const data = ML_PRESETS[preset];
+  const textarea = document.getElementById('ml-tab-input');
+
+  if (Array.isArray(data)) {
+    textarea.value = JSON.stringify(data, null, 2);
+  } else {
+    textarea.value = JSON.stringify(data, null, 2);
+  }
+
+  showMLStatus(`✅ Loaded preset: ${preset}`, 'success');
+}
+
+function showMLStatus(message, type = 'info') {
+  const status = document.getElementById('ml-status');
+  status.textContent = message;
+  status.style.display = 'block';
+  status.style.background = type === 'success' ? '#e8f5e9' : type === 'error' ? '#ffebee' : '#e3f2fd';
+
+  setTimeout(() => {
+    status.style.display = 'none';
+  }, 3000);
+}
+
+function showMLResults(results) {
+  const resultsDiv = document.getElementById('ml-results');
+  const resultsContent = document.getElementById('ml-results-content');
+
+  resultsContent.textContent = JSON.stringify(results, null, 2);
+  resultsDiv.style.display = 'block';
+}
+
+function showMLLoading(show) {
+  document.getElementById('ml-loading').style.display = show ? 'block' : 'none';
+  document.getElementById('ml-results').style.display = show ? 'none' : 'block';
+}
+
+/**
+ * Check ML Classifier status in background worker
+ * @param {number} maxRetries - Maximum number of retries
+ * @param {number} delayMs - Delay between retries in milliseconds
+ * @returns {Promise<void>}
+ */
+async function checkMLStatus(maxRetries = 20, delayMs = 1000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await browser.runtime.sendMessage({ action: 'getMLStatus' });
+
+      if (response.ready) {
+        console.log('[ML Debug] ✓ ML Worker ready');
+        return;
+      }
+
+      console.log(`[ML Debug] Waiting for ML Worker... (attempt ${i + 1}/${maxRetries})`, {
+        loading: response.loading,
+        error: response.error
+      });
+
+      if (response.error) {
+        throw new Error('ML Worker failed to load: ' + response.error);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    } catch (error) {
+      console.error('[ML Debug] Status check error:', error);
+      if (i === maxRetries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error('ML Worker failed to initialize after ' + maxRetries + ' attempts');
+}
+
+async function handleMLClassifySingle() {
+  const textarea = document.getElementById('ml-tab-input');
+
+  try {
+    const tab = JSON.parse(textarea.value);
+
+    if (Array.isArray(tab)) {
+      showMLStatus('❌ Use "Classify Batch" for arrays', 'error');
+      return;
+    }
+
+    showMLLoading(true);
+    showMLStatus('⏳ Waiting for ML Worker...', 'info');
+
+    // Wait for ML Worker to be ready
+    await checkMLStatus();
+
+    showMLStatus('⏳ Loading model and classifying...', 'info');
+
+    const startTime = Date.now();
+    const response = await browser.runtime.sendMessage({
+      action: 'classifyTab',
+      tab: tab,
+      sessionContext: null
+    });
+
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+
+    const elapsed = Date.now() - startTime;
+
+    showMLLoading(false);
+    showMLResults(response.result);
+    showMLStatus(`✅ Classified in ${elapsed}ms`, 'success');
+
+  } catch (error) {
+    showMLLoading(false);
+    showMLStatus(`❌ Error: ${error.message}`, 'error');
+    console.error('[ML Debug] Classification error:', error);
+  }
+}
+
+async function handleMLClassifyBatch() {
+  const textarea = document.getElementById('ml-tab-input');
+
+  try {
+    let tabs = JSON.parse(textarea.value);
+
+    if (!Array.isArray(tabs)) {
+      tabs = [tabs];
+    }
+
+    showMLLoading(true);
+    showMLStatus('⏳ Waiting for ML Worker...', 'info');
+
+    // Wait for ML Worker to be ready
+    await checkMLStatus();
+
+    showMLStatus(`⏳ Classifying ${tabs.length} tabs...`, 'info');
+
+    const startTime = Date.now();
+    const response = await browser.runtime.sendMessage({
+      action: 'classifyBatch',
+      tabs: tabs,
+      sessionContext: null
+    });
+
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+
+    const elapsed = Date.now() - startTime;
+
+    showMLLoading(false);
+    showMLResults(response.results);
+    showMLStatus(`✅ Classified ${response.results.length} tabs in ${elapsed}ms`, 'success');
+
+  } catch (error) {
+    showMLLoading(false);
+    showMLStatus(`❌ Error: ${error.message}`, 'error');
+    console.error('[ML Debug] Batch classification error:', error);
+  }
+}
+
+async function handleMLTestContext() {
+  const textarea = document.getElementById('ml-tab-input');
+
+  try {
+    let tabs = JSON.parse(textarea.value);
+
+    if (!Array.isArray(tabs)) {
+      tabs = [tabs];
+    }
+
+    showMLStatus('🧠 Extracting context features...', 'info');
+
+    if (typeof ContextFeatures === 'undefined') {
+      showMLStatus('❌ ContextFeatures not loaded', 'error');
+      return;
+    }
+
+    const context = ContextFeatures.extractSessionContext(tabs);
+
+    showMLLoading(false);
+    showMLResults({
+      message: 'Context features extracted',
+      tabs: tabs.length,
+      context: context,
+      domainKnowledge: tabs.map(t => ({
+        domain: t.domain,
+        hints: DomainKnowledge ? DomainKnowledge.getHints(t.domain) : null
+      }))
+    });
+
+    showMLStatus(`✅ Context extracted for ${tabs.length} tabs`, 'success');
+
+  } catch (error) {
+    showMLStatus(`❌ Error: ${error.message}`, 'error');
+    console.error('[ML Debug] Context extraction error:', error);
+  }
+}
+
+/**
+ * Test embeddings model directly
+ */
+async function handleTestEmbeddings() {
+  showMLLoading(true);
+  showMLStatus('🔄 Loading embeddings model...', 'info');
+
+  try {
+    if (!window.modelPreloader) {
+      throw new Error('ModelPreloader not available');
+    }
+
+    const startTime = Date.now();
+    const pipe = await window.modelPreloader.preloadModel('embeddings');
+    const loadTime = Date.now() - startTime;
+
+    // Test with sample text
+    const testText = "Python tutorial for machine learning and data science";
+    const embeddings = await pipe(testText, { pooling: 'mean', normalize: true });
+
+    showMLLoading(false);
+    showMLResults({
+      model: 'Embeddings (Xenova/all-MiniLM-L6-v2)',
+      loadTime: `${(loadTime / 1000).toFixed(2)}s`,
+      testText: testText,
+      embeddingDimensions: embeddings.data.length,
+      sampleValues: Array.from(embeddings.data.slice(0, 10)).map(v => v.toFixed(4))
+    });
+
+    showMLStatus(`✅ Embeddings model working! (${(loadTime / 1000).toFixed(1)}s)`, 'success');
+
+  } catch (error) {
+    showMLLoading(false);
+    showMLStatus(`❌ Error: ${error.message}`, 'error');
+    console.error('[ML Debug] Embeddings test error:', error);
+  }
+}
+
+/**
+ * Test classification model directly
+ */
+async function handleTestClassification() {
+  showMLLoading(true);
+  showMLStatus('🔄 Loading classification model...', 'info');
+
+  try {
+    if (!window.modelPreloader) {
+      throw new Error('ModelPreloader not available');
+    }
+
+    const startTime = Date.now();
+    const pipe = await window.modelPreloader.preloadModel('classification');
+    const loadTime = Date.now() - startTime;
+
+    // Test with sample text
+    const testText = "Python tutorial for machine learning";
+    const labels = ['technology', 'shopping', 'news', 'entertainment'];
+    const result = await pipe(testText, labels, { multi_label: true });
+
+    showMLLoading(false);
+    showMLResults({
+      model: 'Classification (Xenova/distilbert-base-uncased-mnli)',
+      loadTime: `${(loadTime / 1000).toFixed(2)}s`,
+      testText: testText,
+      labels: labels,
+      scores: result.scores.map((s, i) => ({ label: result.labels[i], score: s.toFixed(3) }))
+    });
+
+    showMLStatus(`✅ Classification model working! (${(loadTime / 1000).toFixed(1)}s)`, 'success');
+
+  } catch (error) {
+    showMLLoading(false);
+    showMLStatus(`❌ Error: ${error.message}`, 'error');
+    console.error('[ML Debug] Classification test error:', error);
+  }
+}
+
+/**
+ * Test NER model directly
+ */
+async function handleTestNER() {
+  showMLLoading(true);
+  showMLStatus('🔄 Loading NER model...', 'info');
+
+  try {
+    if (!window.modelPreloader) {
+      throw new Error('ModelPreloader not available');
+    }
+
+    const startTime = Date.now();
+    const pipe = await window.modelPreloader.preloadModel('ner');
+    const loadTime = Date.now() - startTime;
+
+    // Test with sample text
+    const testText = "Hugging Face Inc. is a company based in New York City. Its headquarters are in DUMBO.";
+    const result = await pipe(testText);
+
+    showMLLoading(false);
+    showMLResults({
+      model: 'NER (Xenova/bert-base-NER)',
+      loadTime: `${(loadTime / 1000).toFixed(2)}s`,
+      testText: testText,
+      entities: result
+    });
+
+    showMLStatus(`✅ NER model working! (${(loadTime / 1000).toFixed(1)}s)`, 'success');
+
+  } catch (error) {
+    showMLLoading(false);
+    showMLStatus(`❌ Error: ${error.message}`, 'error');
+    console.error('[ML Debug] NER test error:', error);
+  }
+}
+
+/**
+ * Check model cache status
+ */
+async function handleCheckModelCache() {
+  showMLStatus('🔄 Checking model cache...', 'info');
+
+  try {
+    if (!window.modelPreloader) {
+      throw new Error('ModelPreloader not available');
+    }
+
+    await window.modelPreloader.checkCachedModels();
+
+    const status = window.modelPreloader.getStatus();
+
+    showMLResults({
+      message: 'Model cache status',
+      hasTransformers: status.hasTransformers,
+      models: status.models
+    });
+
+    showMLStatus('✅ Cache check complete (see browser console for details)', 'success');
+
+  } catch (error) {
+    showMLStatus(`❌ Error: ${error.message}`, 'error');
+    console.error('[ML Debug] Cache check error:', error);
+  }
+}
+
+/**
+ * Handle single tab classification
+ * Uses partial context (domain cluster only, not full session)
+ * @param {Object} tab - Tab to classify
+ * @param {HTMLElement} button - Button element to update
+ */
+async function handleClassifySingleTab(tab, button) {
+  const originalText = button.textContent;
+
+  try {
+    // Disable button during classification
+    button.disabled = true;
+    button.textContent = '⏳';
+
+    // Wait for ML Worker to be ready
+    await checkMLStatus();
+
+    // Extract partial context: only tabs from same domain
+    const sameDomainTabs = currentTabs.filter(t => t.domain === tab.domain);
+    const partialContext = ContextFeatures ? ContextFeatures.extractSessionContext(sameDomainTabs) : null;
+
+    console.log(`[Classify Single] Classifying tab with partial context (${sameDomainTabs.length} tabs from ${tab.domain})`);
+
+    // Classify single tab via background worker
+    const response = await browser.runtime.sendMessage({
+      action: 'classifyTab',
+      tab: tab,
+      sessionContext: partialContext
+    });
+
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+
+    const result = response.result;
+
+    console.log('[Classify Single] Classification complete:', {
+      tab: tab.title,
+      intent: result.classifications.intent.topK[0],
+      status: result.classifications.status.topK[0],
+      contentType: result.classifications.contentType.topK[0]
+    });
+
+    // Refresh tab list to show badges
+    await renderTabList(currentTabs);
+
+  } catch (error) {
+    console.error('[Classify Single] Error:', error);
+    alert(`❌ Classification failed: ${error.message}`);
+  } finally {
+    // Re-enable button
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+/**
+ * Handle "Classify All" button click
+ * Run ML classification on all tabs via background worker
+ * Uses full session context (all tabs)
+ */
+async function handleClassifyAll() {
+  const btn = document.getElementById('classify-all-btn');
+  const originalText = btn.textContent;
+
+  try {
+    // Disable button during classification
+    btn.disabled = true;
+    btn.textContent = '⏳ Classifying...';
+
+    console.log('[Classify All] Starting batch classification...');
+
+    // Wait for ML Worker to be ready
+    await checkMLStatus();
+
+    // Get all tabs (both local and synced)
+    const tabs = allTabs;
+
+    if (tabs.length === 0) {
+      alert('No tabs to classify');
+      return;
+    }
+
+    console.log(`[Classify All] Starting classification for ${tabs.length} tabs`);
+
+    // Extract full session context
+    const sessionContext = ContextFeatures ? ContextFeatures.extractSessionContext(tabs) : null;
+
+    // Show progress in button
+    btn.textContent = `🧠 Classifying ${tabs.length} tabs...`;
+
+    // Run batch classification via background worker
+    const startTime = Date.now();
+    const response = await browser.runtime.sendMessage({
+      action: 'classifyBatch',
+      tabs: tabs,
+      sessionContext: sessionContext
+    });
+
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+
+    const totalTime = Date.now() - startTime;
+    const results = response.results;
+
+    console.log('[Classify All] Batch classification complete:', {
+      totalTabs: results.length,
+      totalTime: totalTime + 'ms',
+      avgTimePerTab: Math.round(totalTime / results.length) + 'ms'
+    });
+
+    // Show success message
+    const message = `✅ Classified ${results.length} tabs in ${(totalTime / 1000).toFixed(1)}s\n📊 Average: ${Math.round(totalTime / results.length)}ms per tab`;
+
+    alert(message);
+
+    // Refresh the tab list to show updated classifications
+    await renderTabList(currentTabs);
+
+  } catch (error) {
+    console.error('[Classify All] Error:', error);
+    alert(`❌ Classification failed: ${error.message}`);
+  } finally {
+    // Re-enable button
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+// ============================================================================
+// ML Model Pre-loading Functions
+// ============================================================================
+
+/**
+ * Start ML model pre-loading in background
+ * Downloads models in UI context (better fetch limits than background worker)
+ */
+function startModelPreloading() {
+  if (typeof modelPreloader === 'undefined') {
+    console.error('[Model Preload] modelPreloader not available');
+    return;
+  }
+
+  console.log('[Model Preload] Starting model pre-loading...');
+
+  // Show progress toast
+  const toast = document.getElementById('model-loading-toast');
+  const progressList = document.getElementById('model-progress-list');
+  const closeBtn = document.getElementById('close-toast-btn');
+
+  toast.style.display = 'block';
+
+  // Close button handler
+  closeBtn.addEventListener('click', () => {
+    toast.style.display = 'none';
+  });
+
+  // Set up progress callback
+  modelPreloader.setProgressCallback((progress) => {
+    updateModelProgress(progress);
+  });
+
+  // Start pre-loading lightweight models only (embeddings + classification)
+  // Skip NER for now (too large - 420MB)
+  modelPreloader.preloadLightweightModels()
+    .then((results) => {
+      console.log('[Model Preload] ✓ Lightweight models pre-loaded:', results);
+
+      // Keep toast open - user must close manually
+      // Add success message
+      const successMsg = document.createElement('div');
+      successMsg.style.color = '#4CAF50';
+      successMsg.style.marginTop = '8px';
+      successMsg.style.fontWeight = '600';
+      successMsg.textContent = '✓ Models ready! You can close this.';
+      progressList.appendChild(successMsg);
+
+      // Notify background worker that models are ready
+      browser.runtime.sendMessage({
+        action: 'modelsReady',
+        models: Object.keys(results).filter(k => results[k] !== null)
+      }).catch(err => {
+        console.error('[Model Preload] Failed to notify background worker:', err);
+      });
+    })
+    .catch((error) => {
+      console.error('[Model Preload] ✗ Failed to pre-load models:', error);
+
+      // Show error in toast (stays open - user must close)
+      const errorMsg = document.createElement('div');
+      errorMsg.style.color = '#f44336';
+      errorMsg.style.marginTop = '8px';
+      errorMsg.style.fontWeight = '600';
+      errorMsg.textContent = `❌ Failed to load models. See console for details.`;
+      progressList.appendChild(errorMsg);
+    });
+}
+
+/**
+ * Update model loading progress in toast UI
+ */
+function updateModelProgress(progress) {
+  const progressList = document.getElementById('model-progress-list');
+
+  if (!progressList) return;
+
+  // Clear and rebuild progress list
+  progressList.innerHTML = '';
+
+  for (const [key, model] of Object.entries(progress.allModels)) {
+    const item = document.createElement('div');
+    item.style.marginBottom = '8px';
+
+    let icon = '⏳';
+    let statusText = model.status;
+    let color = '#666';
+
+    if (model.status === 'ready') {
+      icon = '✓';
+      color = '#4CAF50';
+    } else if (model.status === 'error') {
+      icon = '✗';
+      color = '#f44336';
+      statusText = model.error || 'Failed';
+    } else if (model.status === 'downloading' && progress.progress) {
+      icon = '📥';
+      statusText = `${Math.round(progress.progress)}%`;
+      color = '#2196F3';
+    } else if (model.status === 'loading') {
+      icon = '⏳';
+      statusText = 'Loading...';
+      color = '#FF9800';
+    }
+
+    item.innerHTML = `
+      <span style="color: ${color};">${icon}</span>
+      <strong>${key}</strong>
+      <span style="color: ${color}; font-size: 12px;">(${statusText})</span>
+      <span style="color: #999; font-size: 11px;">${model.size}</span>
+    `;
+
+    progressList.appendChild(item);
+  }
 }
 
 // TODO: Add keyboard shortcuts (Ctrl+A for select all, etc.)

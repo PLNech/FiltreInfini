@@ -10,11 +10,22 @@
 </head>
 <body>
   <div class="app">
+    <!-- Model Loading Progress Toast -->
+    <div id="model-loading-toast" style="display: none; position: fixed; top: 10px; right: 10px; background: white; border: 2px solid #4CAF50; border-radius: 8px; padding: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; max-width: 400px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="margin: 0; font-size: 14px; font-weight: 600;">🧠 Loading ML Models</h3>
+        <button id="close-toast-btn" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 0; line-height: 1;">×</button>
+      </div>
+      <div id="model-progress-list" style="font-size: 13px; color: #666;"></div>
+    </div>
+
     <header class="header">
       <h1 class="header__title">FiltreInfini</h1>
       <div class="header__actions">
         <button id="api-test-btn" class="btn btn--tertiary" title="Test Firefox APIs">🔍 API Test</button>
+        <button id="ml-debug-btn" class="btn btn--tertiary" title="Test ML Classification">🤖 ML Debug</button>
         <button id="fetch-all-btn" class="btn btn--tertiary" title="Reload all metadata">🔄 Fetch All</button>
+        <button id="classify-all-btn" class="btn btn--tertiary" title="Run ML classification on all tabs">🧠 Classify All</button>
         <button id="import-sync-btn" class="btn btn--secondary" title="Import Firefox Sync tabs">📥 Import Synced Tabs</button>
         <input type="file" id="sync-file-input" accept=".json" style="display: none;">
         <button id="export-btn" class="btn btn--secondary">Export CSV</button>
@@ -212,6 +223,79 @@
     </div>
   </div>
 
+  <!-- ML Debug Modal -->
+  <div id="ml-debug-modal" class="modal" style="display: none;">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--wide">
+      <div class="modal__header">
+        <h2 class="modal__title">🤖 ML Classification Debug</h2>
+        <button class="modal__close" id="ml-debug-close-btn">×</button>
+      </div>
+      <div class="modal__body">
+        <p style="margin-bottom: 20px;">Test the 3D ML classification system with example tabs. Edit the JSON below or use presets.</p>
+
+        <!-- Model Testing -->
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin-bottom: 10px;">Test Individual Models:</h3>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn--small" id="test-embeddings-btn">📊 Test Embeddings</button>
+            <button class="btn btn--small" id="test-classification-btn">🎯 Test Classification</button>
+            <button class="btn btn--small" id="test-ner-btn">🔖 Test NER</button>
+            <button class="btn btn--small" id="check-model-cache-btn">💾 Check Cache</button>
+          </div>
+        </div>
+
+        <!-- Presets -->
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin-bottom: 10px;">Quick Presets:</h3>
+          <button class="btn btn--small ml-preset-btn" data-preset="tech">💻 Tech Docs</button>
+          <button class="btn btn--small ml-preset-btn" data-preset="shopping">🛒 Shopping</button>
+          <button class="btn btn--small ml-preset-btn" data-preset="social">💬 Social</button>
+          <button class="btn btn--small ml-preset-btn" data-preset="news">📰 News</button>
+          <button class="btn btn--small ml-preset-btn" data-preset="old">📚 Old Reference</button>
+          <button class="btn btn--small ml-preset-btn" data-preset="mixed">🎲 Mixed Batch</button>
+        </div>
+
+        <!-- Tab Input -->
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin-bottom: 10px;">Tab Data (JSON):</h3>
+          <textarea id="ml-tab-input" style="width: 100%; height: 200px; font-family: monospace; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+{
+  "id": "test-1",
+  "title": "Python Tutorial - Learn Python Programming",
+  "url": "https://docs.python.org/3/tutorial/",
+  "domain": "docs.python.org",
+  "lastUsed": 1234567890,
+  "inactive": false
+}
+          </textarea>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+          <button id="ml-classify-single-btn" class="btn btn--primary">🔬 Classify Single Tab</button>
+          <button id="ml-classify-batch-btn" class="btn btn--secondary">📊 Classify Batch (Array)</button>
+          <button id="ml-test-context-btn" class="btn btn--tertiary">🧠 Test Context Features</button>
+        </div>
+
+        <!-- Results -->
+        <div id="ml-results" style="display: none;">
+          <h3 style="margin-bottom: 10px;">Results:</h3>
+          <div id="ml-results-content" style="background: #f5f5f5; padding: 15px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+
+        <!-- Loading -->
+        <div id="ml-loading" style="display: none; text-align: center; padding: 20px;">
+          <p>⏳ Loading model (~67MB, cached after first load)...</p>
+          <p style="font-size: 0.9em; color: #666;">This may take 10-30 seconds on first run</p>
+        </div>
+
+        <!-- Status -->
+        <div id="ml-status" style="margin-top: 20px; padding: 10px; background: #e3f2fd; border-radius: 4px; display: none;"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Load libraries and main script -->
   <script src="../lib/storage.js"></script>
   <script src="../lib/group-manager.js"></script>
@@ -223,6 +307,17 @@
   <script src="../lib/brand-colors.js"></script>
   <script src="../lib/categorizer.js"></script>
   <script src="../lib/sync-parser.js"></script>
+  <script src="../lib/domain-knowledge.js"></script>
+  <script src="../lib/context-features.js"></script>
+  <script src="../lib/feedback-manager.js"></script>
+
+  <!-- ML Model Pre-loader -->
+  <script src="../lib/model-preloader.js"></script>
+
+  <!-- ML classification runs in background worker (see background/ml-worker.js) -->
+  <!-- Models are pre-loaded in UI context (better fetch limits) then cached for background worker -->
+  <!-- Context features are still needed in UI for extracting session context -->
+
   <script src="manager.js"></script>
 </body>
 </html>
