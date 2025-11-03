@@ -207,7 +207,7 @@ async function fetchReadingTime(url) {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; FiltreInfini/1.0; +https://github.com/PLNech/FiltreInfini)'
       },
-      signal: AbortSignal.timeout(5000) // 5s timeout (faster failures)
+      signal: AbortSignal.timeout(8000) // 8s timeout (sequential fetching)
     });
 
     if (!response.ok) {
@@ -229,7 +229,10 @@ async function fetchReadingTime(url) {
 
     return readingTimeMinutes;
   } catch (error) {
-    // Timeout, network error, etc.
+    // Log first 5 errors for debugging
+    if (Math.random() < 0.05) {
+      console.log(`\n   [fetch error] ${url}: ${error.message}`);
+    }
     return null;
   }
 }
@@ -514,39 +517,39 @@ async function main() {
 
       const batchStartTime = Date.now();
 
-      // Process batch in parallel
-      const batchResults = await Promise.all(
-        batch.map(async (tab, idx) => {
-          const [classification, entities, embedding, readingTimeMinutes] = await Promise.all([
-            classifyTab(tab, classifier),
-            extractEntities(tab, ner),
-            computeEmbedding(tab, embedder),
-            fetchReadingTime(tab.url).catch(err => {
-              // Silently catch errors, just return null
-              return null;
-            })
-          ]);
+      // Process batch: ML models in parallel, but reading time sequentially (rate limiting)
+      const batchResults = [];
 
-          if (readingTimeMinutes) {
-            readingTimeSuccesses++;
-          } else {
-            readingTimeFailures++;
-          }
+      for (const tab of batch) {
+        // Run ML models in parallel (fast, local)
+        const [classification, entities, embedding] = await Promise.all([
+          classifyTab(tab, classifier),
+          extractEntities(tab, ner),
+          computeEmbedding(tab, embedder)
+        ]);
 
-          // Extract search query if applicable
-          const searchQuery = extractSearchQuery(tab.url);
+        // Fetch reading time sequentially (slow, network) to avoid overwhelming connections
+        const readingTimeMinutes = await fetchReadingTime(tab.url).catch(() => null);
 
-          return {
-            ...tab,
-            classification,
-            entities,
-            embedding,
-            readingTimeMinutes: readingTimeMinutes || undefined, // Only include if successfully fetched
-            searchQuery: searchQuery || undefined, // Only include if exists
-            analyzedAt: Date.now()
-          };
-        })
-      );
+        if (readingTimeMinutes) {
+          readingTimeSuccesses++;
+        } else {
+          readingTimeFailures++;
+        }
+
+        // Extract search query if applicable
+        const searchQuery = extractSearchQuery(tab.url);
+
+        batchResults.push({
+          ...tab,
+          classification,
+          entities,
+          embedding,
+          readingTimeMinutes: readingTimeMinutes || undefined,
+          searchQuery: searchQuery || undefined,
+          analyzedAt: Date.now()
+        });
+      }
 
       results.push(...batchResults);
 
