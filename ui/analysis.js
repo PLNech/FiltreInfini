@@ -283,31 +283,41 @@ function renderStatistics() {
 
   const statsGrid = document.getElementById('stats-grid');
   statsGrid.innerHTML = `
-    <div class="stat-card">
+    <div class="stat-card" data-stat="overview" style="cursor: pointer;" title="Click to view overview">
       <div class="stat-value">${metadata.totalTabs}</div>
       <div class="stat-label">Total Tabs</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-stat="domains" style="cursor: pointer;" title="Click to view domain breakdown">
       <div class="stat-value">${uniqueDomains}</div>
       <div class="stat-label">Unique Domains</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-stat="entities" style="cursor: pointer;" title="Click to view entities">
       <div class="stat-value">${tabsWithEntities}</div>
       <div class="stat-label">Tabs with Entities</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-stat="entities" style="cursor: pointer;" title="Click to view people entities">
       <div class="stat-value">${allPeople.size}</div>
       <div class="stat-label">Unique People</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-stat="entities" style="cursor: pointer;" title="Click to view organization entities">
       <div class="stat-value">${allOrgs.size}</div>
       <div class="stat-label">Unique Organizations</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" data-stat="map" style="cursor: pointer;" title="Click to view locations map">
       <div class="stat-value">${allLocs.size}</div>
       <div class="stat-label">Unique Locations</div>
     </div>
   `;
+
+  // Add click handlers to stat cards
+  document.querySelectorAll('.stat-card[data-stat]').forEach(card => {
+    card.addEventListener('click', () => {
+      const chartTab = card.dataset.stat;
+      switchChartTab(chartTab);
+      // Scroll to charts section
+      document.getElementById('charts-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
 }
 
 /**
