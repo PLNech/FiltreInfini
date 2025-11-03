@@ -56,11 +56,13 @@
 - Popup menu shows model status
 - Individual model tests in ML Debug UI
 
-### ⚠️ Needs Debug
+### ⚠️ Recently Fixed (Test Needed)
 - Background worker classification
-  - Status shows `{loading: false, error: null}`
-  - Should show `{loading: true}` when loading
-  - Should show `{ready: true}` when done
+  - **FIXED**: Export MLClassifierWorker to `self` (Firefox background scope)
+  - **FIXED**: Added safety checks before using MLClassifierWorker
+  - **TEST**: Check background console for "[ML Worker] Script loaded" message
+  - **TEST**: Status should show `{loading: true}` then `{ready: true}`
+  - If still failing, check if "MLClassifierWorker not defined" error appears
 
 ## Common Issues
 

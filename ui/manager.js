@@ -2091,7 +2091,7 @@ async function handleCheckModelCache() {
 }
 
 /**
- * Handle single tab classification
+ * Handle single tab classification (UI mode - lightweight)
  * Uses partial context (domain cluster only, not full session)
  * @param {Object} tab - Tab to classify
  * @param {HTMLElement} button - Button element to update
@@ -2104,27 +2104,29 @@ async function handleClassifySingleTab(tab, button) {
     button.disabled = true;
     button.textContent = '⏳';
 
-    // Wait for ML Worker to be ready
-    await checkMLStatus();
+    // Load classification model in UI if not already loaded
+    if (!window.modelPreloader) {
+      throw new Error('ModelPreloader not available');
+    }
+
+    const classificationPipeline = await window.modelPreloader.preloadModel('classification');
 
     // Extract partial context: only tabs from same domain
     const sameDomainTabs = currentTabs.filter(t => t.domain === tab.domain);
     const partialContext = ContextFeatures ? ContextFeatures.extractSessionContext(sameDomainTabs) : null;
 
-    console.log(`[Classify Single] Classifying tab with partial context (${sameDomainTabs.length} tabs from ${tab.domain})`);
+    console.log(`[Classify Single] Classifying tab (UI mode) with partial context (${sameDomainTabs.length} tabs from ${tab.domain})`);
 
-    // Classify single tab via background worker
-    const response = await browser.runtime.sendMessage({
-      action: 'classifyTab',
-      tab: tab,
-      sessionContext: partialContext
-    });
+    // Classify single tab using UI model
+    const result = await classifyTabInUI(tab, classificationPipeline, partialContext);
 
-    if (!response.success) {
-      throw new Error(response.error);
+    // Store in cache
+    if (tab.id) {
+      const metadata = await metadataStorage.getMetadata(tab.id) || {};
+      metadata.mlClassifications = result.classifications;
+      metadata.mlMetadata = result.metadata;
+      await metadataStorage.setMetadata(tab.id, metadata);
     }
-
-    const result = response.result;
 
     console.log('[Classify Single] Classification complete:', {
       tab: tab.title,
@@ -2147,8 +2149,136 @@ async function handleClassifySingleTab(tab, button) {
 }
 
 /**
+ * Classify a single tab using UI-loaded model (lightweight mode)
+ * Bypasses background worker which has ONNX loading issues
+ */
+async function classifyTabInUI(tab, classificationPipeline, sessionContext = null) {
+  // Extract features
+  const features = extractTabFeatures(tab);
+
+  if (!features || features.length < 3) {
+    return getDefaultClassification(tab);
+  }
+
+  try {
+    // Run 3D classification in parallel using UI model
+    const labels = {
+      intent: ['informational', 'navigational', 'transactional'],
+      status: ['to-read', 'to-do', 'reference', 'maybe', 'done'],
+      contentType: ['content', 'communication', 'search']
+    };
+
+    const [intentResult, statusResult, contentTypeResult] = await Promise.all([
+      classificationPipeline(features, labels.intent, { multi_label: true }),
+      classificationPipeline(features, labels.status, { multi_label: true }),
+      classificationPipeline(features, labels.contentType, { multi_label: true })
+    ]);
+
+    // Convert to standardized format
+    const rawScores = {
+      intent: parseClassificationResult(intentResult, labels.intent),
+      status: parseClassificationResult(statusResult, labels.status),
+      contentType: parseClassificationResult(contentTypeResult, labels.contentType)
+    };
+
+    // Apply heuristic boosting if available
+    const boostedScores = (typeof ContextFeatures !== 'undefined' && ContextFeatures)
+      ? ContextFeatures.applyHeuristics(rawScores, sessionContext, tab)
+      : rawScores;
+
+    return {
+      classifications: boostedScores,
+      metadata: {
+        modelVersion: 'distilbert-v1-ui',
+        classifiedAt: Date.now(),
+        sessionContext: sessionContext ? {
+          totalTabs: sessionContext.totalTabs,
+          coOccurringDomains: sessionContext.coOccurringDomains?.slice(0, 5) || []
+        } : null
+      }
+    };
+  } catch (error) {
+    console.error('[UI Classification] Error:', error);
+    return getDefaultClassification(tab);
+  }
+}
+
+function extractTabFeatures(tab) {
+  const parts = [];
+
+  if (tab.title && tab.title !== 'Untitled') {
+    parts.push(tab.title);
+  }
+
+  if (tab.domain && tab.domain !== 'about') {
+    parts.push(tab.domain);
+  }
+
+  if (tab.url) {
+    try {
+      const url = new URL(tab.url);
+      const path = url.pathname.replace(/\//g, ' ').replace(/[_-]/g, ' ').trim();
+      if (path && path.length > 0 && path !== ' ') {
+        parts.push(path);
+      }
+    } catch (e) {
+      // Invalid URL, skip
+    }
+  }
+
+  const text = parts.join(' ');
+  const maxChars = 512 * 4; // Token limit approximation
+  return text.length > maxChars ? text.substring(0, maxChars) : text;
+}
+
+function parseClassificationResult(result, allLabels) {
+  const scoreMap = {};
+  result.labels.forEach((label, i) => {
+    scoreMap[label] = result.scores[i];
+  });
+
+  const labels = allLabels;
+  const scores = labels.map(label => scoreMap[label] || 0);
+
+  const topK = labels
+    .map((label, i) => ({ label, score: scores[i] }))
+    .sort((a, b) => b.score - a.score)
+    .filter(item => item.score > 0.3)
+    .slice(0, 3);
+
+  return { labels, scores, topK };
+}
+
+function getDefaultClassification(tab) {
+  return {
+    classifications: {
+      intent: {
+        labels: ['informational', 'navigational', 'transactional'],
+        scores: [0.5, 0.3, 0.2],
+        topK: [{ label: 'informational', score: 0.5 }]
+      },
+      status: {
+        labels: ['to-read', 'to-do', 'reference', 'maybe', 'done'],
+        scores: [0.4, 0.3, 0.2, 0.1, 0.0],
+        topK: [{ label: 'to-read', score: 0.4 }]
+      },
+      contentType: {
+        labels: ['content', 'communication', 'search'],
+        scores: [0.6, 0.3, 0.1],
+        topK: [{ label: 'content', score: 0.6 }]
+      }
+    },
+    metadata: {
+      modelVersion: 'default',
+      classifiedAt: Date.now(),
+      sessionContext: null
+    }
+  };
+}
+
+/**
  * Handle "Classify All" button click
- * Run ML classification on all tabs via background worker
+ * Run ML classification on all tabs using UI-loaded model (lightweight mode)
  * Uses full session context (all tabs)
  */
 async function handleClassifyAll() {
@@ -2160,10 +2290,7 @@ async function handleClassifyAll() {
     btn.disabled = true;
     btn.textContent = '⏳ Classifying...';
 
-    console.log('[Classify All] Starting batch classification...');
-
-    // Wait for ML Worker to be ready
-    await checkMLStatus();
+    console.log('[Classify All] Starting batch classification (UI mode)...');
 
     // Get all tabs (both local and synced)
     const tabs = allTabs;
@@ -2175,26 +2302,47 @@ async function handleClassifyAll() {
 
     console.log(`[Classify All] Starting classification for ${tabs.length} tabs`);
 
+    // Load classification model in UI if not already loaded
+    btn.textContent = '⏳ Loading model...';
+
+    if (!window.modelPreloader) {
+      throw new Error('ModelPreloader not available');
+    }
+
+    const classificationPipeline = await window.modelPreloader.preloadModel('classification');
+
     // Extract full session context
     const sessionContext = ContextFeatures ? ContextFeatures.extractSessionContext(tabs) : null;
 
-    // Show progress in button
-    btn.textContent = `🧠 Classifying ${tabs.length} tabs...`;
-
-    // Run batch classification via background worker
+    // Run batch classification in UI
     const startTime = Date.now();
-    const response = await browser.runtime.sendMessage({
-      action: 'classifyBatch',
-      tabs: tabs,
-      sessionContext: sessionContext
-    });
+    const results = [];
 
-    if (!response.success) {
-      throw new Error(response.error);
+    for (let i = 0; i < tabs.length; i++) {
+      const tab = tabs[i];
+
+      // Update progress every 10 tabs
+      if (i % 10 === 0) {
+        btn.textContent = `🧠 ${i}/${tabs.length} tabs...`;
+      }
+
+      const result = await classifyTabInUI(tab, classificationPipeline, sessionContext);
+
+      // Store in cache
+      if (tab.id) {
+        const metadata = await metadataStorage.getMetadata(tab.id) || {};
+        metadata.mlClassifications = result.classifications;
+        metadata.mlMetadata = result.metadata;
+        await metadataStorage.setMetadata(tab.id, metadata);
+      }
+
+      results.push({
+        tabId: tab.id,
+        ...result
+      });
     }
 
     const totalTime = Date.now() - startTime;
-    const results = response.results;
 
     console.log('[Classify All] Batch classification complete:', {
       totalTabs: results.length,
