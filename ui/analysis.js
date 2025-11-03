@@ -20,6 +20,18 @@ const filters = {
 let similarToTab = null;
 let similarityThreshold = 0.7;
 
+// Chart instances (for lazy loading and cleanup)
+let chartInstances = {
+  overview: [],
+  classification: [],
+  entities: [],
+  domains: []
+};
+let currentChartTab = 'overview';
+
+// Last loaded file for quick reload
+let lastLoadedFile = null;
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
@@ -42,7 +54,15 @@ function setupEventListeners() {
   document.getElementById('file-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
+      lastLoadedFile = file;
       loadAnalysisFromFile(file);
+    }
+  });
+
+  // Reload last file button
+  document.getElementById('reload-last-btn').addEventListener('click', () => {
+    if (lastLoadedFile) {
+      loadAnalysisFromFile(lastLoadedFile);
     }
   });
 
@@ -81,6 +101,14 @@ function setupEventListeners() {
 
   // Clear similar filter button
   document.getElementById('clear-similar-btn').addEventListener('click', clearSimilarFilter);
+
+  // Chart tab switching
+  document.querySelectorAll('.chart-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const tabName = tab.dataset.tab;
+      switchChartTab(tabName);
+    });
+  });
 }
 
 /**
@@ -130,6 +158,9 @@ async function loadAnalysis() {
   const lastFilename = localStorage.getItem('lastAnalysisFilename');
 
   if (lastFilename) {
+    // Show reload button if we have a cached filename
+    document.getElementById('reload-last-btn').style.display = 'inline-block';
+
     // Show instructions with hint about last file
     document.getElementById('tabs-container').innerHTML = `
       <div class="empty-state">
@@ -566,13 +597,47 @@ function escapeHtml(text) {
 }
 
 /**
- * Render all charts using Chart.js
+ * Switch chart tab (with lazy loading)
  */
-function renderCharts() {
-  const { statistics } = analysisData;
+function switchChartTab(tabName) {
+  if (currentChartTab === tabName) return;
 
-  // Show charts section
-  document.getElementById('charts-section').style.display = 'block';
+  // Destroy charts in old tab
+  destroyCharts(currentChartTab);
+
+  // Update UI
+  document.querySelectorAll('.chart-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.tab === tabName);
+  });
+
+  document.querySelectorAll('.chart-tab-content').forEach(content => {
+    content.style.display = 'none';
+  });
+
+  document.getElementById(`tab-${tabName}`).style.display = 'block';
+
+  // Render charts for new tab
+  currentChartTab = tabName;
+  renderChartsForTab(tabName);
+}
+
+/**
+ * Destroy charts in a specific tab
+ */
+function destroyCharts(tabName) {
+  if (chartInstances[tabName]) {
+    chartInstances[tabName].forEach(chart => {
+      if (chart) chart.destroy();
+    });
+    chartInstances[tabName] = [];
+  }
+}
+
+/**
+ * Render charts for a specific tab (lazy loading)
+ */
+function renderChartsForTab(tabName) {
+  const { statistics } = analysisData;
 
   // Color palettes
   const colors = {
@@ -582,235 +647,310 @@ function renderCharts() {
     entities: ['#673AB7', '#FF5722', '#795548']
   };
 
-  // 1. Intent Distribution (Doughnut)
-  new Chart(document.getElementById('intent-chart'), {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(statistics.intent),
-      datasets: [{
-        data: Object.values(statistics.intent),
-        backgroundColor: colors.intent,
-        borderWidth: 2,
-        borderColor: '#fff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: { position: 'bottom' }
-      }
-    }
-  });
+  chartInstances[tabName] = [];
 
-  // 2. Status Distribution (Doughnut)
-  new Chart(document.getElementById('status-chart'), {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(statistics.status),
-      datasets: [{
-        data: Object.values(statistics.status),
-        backgroundColor: colors.status,
-        borderWidth: 2,
-        borderColor: '#fff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: { position: 'bottom' }
-      }
-    }
-  });
+  if (tabName === 'overview') {
+    // Entity Types Distribution
+    const peopleCount = Object.keys(statistics.topEntities.people).length;
+    const orgsCount = Object.keys(statistics.topEntities.organizations).length;
+    const locsCount = Object.keys(statistics.topEntities.locations).length;
 
-  // 3. Content Type Distribution (Doughnut)
-  new Chart(document.getElementById('content-chart'), {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(statistics.contentType),
-      datasets: [{
-        data: Object.values(statistics.contentType),
-        backgroundColor: colors.content,
-        borderWidth: 2,
-        borderColor: '#fff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: { position: 'bottom' }
-      }
-    }
-  });
-
-  // 4. Top 15 Domains (Horizontal Bar)
-  const topDomains = Object.entries(statistics.topDomains).slice(0, 15);
-  new Chart(document.getElementById('domains-chart'), {
-    type: 'bar',
-    data: {
-      labels: topDomains.map(([domain]) => domain),
-      datasets: [{
-        label: 'Tabs',
-        data: topDomains.map(([_, count]) => count),
-        backgroundColor: '#2196F3',
-        borderWidth: 0
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
+    chartInstances[tabName].push(new Chart(document.getElementById('entities-chart'), {
+      type: 'pie',
+      data: {
+        labels: ['People', 'Organizations', 'Locations'],
+        datasets: [{
+          data: [peopleCount, orgsCount, locsCount],
+          backgroundColor: colors.entities,
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
       },
-      scales: {
-        x: { beginAtZero: true }
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
       }
-    }
-  });
+    }));
 
-  // 5. Entity Types Distribution (Pie)
-  const peopleCount = Object.keys(statistics.topEntities.people).length;
-  const orgsCount = Object.keys(statistics.topEntities.organizations).length;
-  const locsCount = Object.keys(statistics.topEntities.locations).length;
-
-  new Chart(document.getElementById('entities-chart'), {
-    type: 'pie',
-    data: {
-      labels: ['People', 'Organizations', 'Locations'],
-      datasets: [{
-        data: [peopleCount, orgsCount, locsCount],
-        backgroundColor: colors.entities,
-        borderWidth: 2,
-        borderColor: '#fff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: { position: 'bottom' }
-      }
-    }
-  });
-
-  // 6. Top People (Horizontal Bar)
-  const topPeople = Object.entries(statistics.topEntities.people).slice(0, 10);
-  new Chart(document.getElementById('people-chart'), {
-    type: 'bar',
-    data: {
-      labels: topPeople.map(([name]) => name),
-      datasets: [{
-        label: 'Mentions',
-        data: topPeople.map(([_, count]) => count),
-        backgroundColor: '#673AB7',
-        borderWidth: 0
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
+    // Intent Distribution
+    chartInstances[tabName].push(new Chart(document.getElementById('intent-chart'), {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(statistics.intent),
+        datasets: [{
+          data: Object.values(statistics.intent),
+          backgroundColor: colors.intent,
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
       },
-      scales: {
-        x: { beginAtZero: true }
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
       }
-    }
-  });
-
-  // 7. Top Organizations (Horizontal Bar)
-  const topOrgs = Object.entries(statistics.topEntities.organizations).slice(0, 10);
-  new Chart(document.getElementById('orgs-chart'), {
-    type: 'bar',
-    data: {
-      labels: topOrgs.map(([org]) => org),
-      datasets: [{
-        label: 'Mentions',
-        data: topOrgs.map(([_, count]) => count),
-        backgroundColor: '#FF5722',
-        borderWidth: 0
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
+    }));
+  } else if (tabName === 'classification') {
+    // Intent (duplicate for classification tab)
+    chartInstances[tabName].push(new Chart(document.getElementById('intent-chart-dup'), {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(statistics.intent),
+        datasets: [{
+          data: Object.values(statistics.intent),
+          backgroundColor: colors.intent,
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
       },
-      scales: {
-        x: { beginAtZero: true }
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
       }
-    }
-  });
+    }));
 
-  // 8. Top Locations (Horizontal Bar)
-  const topLocs = Object.entries(statistics.topEntities.locations).slice(0, 10);
-  new Chart(document.getElementById('locations-chart'), {
-    type: 'bar',
-    data: {
-      labels: topLocs.map(([loc]) => loc),
-      datasets: [{
-        label: 'Mentions',
-        data: topLocs.map(([_, count]) => count),
-        backgroundColor: '#795548',
-        borderWidth: 0
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
+    // Status
+    chartInstances[tabName].push(new Chart(document.getElementById('status-chart'), {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(statistics.status),
+        datasets: [{
+          data: Object.values(statistics.status),
+          backgroundColor: colors.status,
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
       },
-      scales: {
-        x: { beginAtZero: true }
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
       }
-    }
-  });
+    }));
 
-  // 9. Search Query Domains (if present)
-  const searchTabs = allTabs.filter(t => t.searchQuery);
-  if (searchTabs.length > 0) {
-    const searchDomains = {};
-    searchTabs.forEach(tab => {
-      searchDomains[tab.domain] = (searchDomains[tab.domain] || 0) + 1;
-    });
-
-    const topSearchDomains = Object.entries(searchDomains)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
-
-    document.getElementById('search-chart-container').style.display = 'block';
-
-    new Chart(document.getElementById('search-chart'), {
+    // Content Type
+    chartInstances[tabName].push(new Chart(document.getElementById('content-chart'), {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(statistics.contentType),
+        datasets: [{
+          data: Object.values(statistics.contentType),
+          backgroundColor: colors.content,
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    }));
+  } else if (tabName === 'entities') {
+    // Top People
+    const topPeople = Object.entries(statistics.topEntities.people).slice(0, 10);
+    chartInstances[tabName].push(new Chart(document.getElementById('people-chart'), {
       type: 'bar',
       data: {
-        labels: topSearchDomains.map(([domain]) => domain),
+        labels: topPeople.map(([name]) => name),
         datasets: [{
-          label: 'Search Queries',
-          data: topSearchDomains.map(([_, count]) => count),
-          backgroundColor: '#4CAF50',
+          label: 'Mentions',
+          data: topPeople.map(([_, count]) => count),
+          backgroundColor: '#673AB7',
           borderWidth: 0
         }]
       },
       options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => topPeople[items[0].dataIndex][0] // Full name in tooltip
+            }
+          }
+        },
+        scales: {
+          x: { beginAtZero: true },
+          y: {
+            ticks: {
+              callback: function(value, index) {
+                const label = topPeople[index][0];
+                return label.length > 20 ? label.substring(0, 20) + '...' : label;
+              }
+            }
+          }
+        }
+      }
+    }));
+
+    // Top Organizations
+    const topOrgs = Object.entries(statistics.topEntities.organizations).slice(0, 10);
+    chartInstances[tabName].push(new Chart(document.getElementById('orgs-chart'), {
+      type: 'bar',
+      data: {
+        labels: topOrgs.map(([org]) => org),
+        datasets: [{
+          label: 'Mentions',
+          data: topOrgs.map(([_, count]) => count),
+          backgroundColor: '#FF5722',
+          borderWidth: 0
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => topOrgs[items[0].dataIndex][0]
+            }
+          }
+        },
+        scales: {
+          x: { beginAtZero: true },
+          y: {
+            ticks: {
+              callback: function(value, index) {
+                const label = topOrgs[index][0];
+                return label.length > 20 ? label.substring(0, 20) + '...' : label;
+              }
+            }
+          }
+        }
+      }
+    }));
+
+    // Top Locations
+    const topLocs = Object.entries(statistics.topEntities.locations).slice(0, 10);
+    chartInstances[tabName].push(new Chart(document.getElementById('locations-chart'), {
+      type: 'bar',
+      data: {
+        labels: topLocs.map(([loc]) => loc),
+        datasets: [{
+          label: 'Mentions',
+          data: topLocs.map(([_, count]) => count),
+          backgroundColor: '#795548',
+          borderWidth: 0
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => topLocs[items[0].dataIndex][0]
+            }
+          }
+        },
+        scales: {
+          x: { beginAtZero: true },
+          y: {
+            ticks: {
+              callback: function(value, index) {
+                const label = topLocs[index][0];
+                return label.length > 20 ? label.substring(0, 20) + '...' : label;
+              }
+            }
+          }
+        }
+      }
+    }));
+  } else if (tabName === 'domains') {
+    // Top Domains
+    const topDomains = Object.entries(statistics.topDomains).slice(0, 15);
+    chartInstances[tabName].push(new Chart(document.getElementById('domains-chart'), {
+      type: 'bar',
+      data: {
+        labels: topDomains.map(([domain]) => domain),
+        datasets: [{
+          label: 'Tabs',
+          data: topDomains.map(([_, count]) => count),
+          backgroundColor: '#2196F3',
+          borderWidth: 0
+        }]
+      },
+      options: {
+        indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false }
         },
         scales: {
-          y: { beginAtZero: true }
+          x: { beginAtZero: true }
         }
       }
-    });
+    }));
+
+    // Search Query Domains (if present)
+    const searchTabs = allTabs.filter(t => t.searchQuery);
+    if (searchTabs.length > 0) {
+      const searchDomains = {};
+      searchTabs.forEach(tab => {
+        searchDomains[tab.domain] = (searchDomains[tab.domain] || 0) + 1;
+      });
+
+      const topSearchDomains = Object.entries(searchDomains)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      document.getElementById('search-chart-container').style.display = 'block';
+
+      chartInstances[tabName].push(new Chart(document.getElementById('search-chart'), {
+        type: 'bar',
+        data: {
+          labels: topSearchDomains.map(([domain]) => domain),
+          datasets: [{
+            label: 'Search Queries',
+            data: topSearchDomains.map(([_, count]) => count),
+            backgroundColor: '#4CAF50',
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      }));
+    }
   }
+}
+
+/**
+ * Initialize charts (show section and render first tab)
+ */
+function renderCharts() {
+  // Show charts section
+  document.getElementById('charts-section').style.display = 'block';
+
+  // Render initial tab (overview)
+  renderChartsForTab('overview');
 }
 
 console.log('[Analysis] UI loaded');
