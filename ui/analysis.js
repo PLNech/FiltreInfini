@@ -40,8 +40,15 @@ let geocodingCache = {};
 // Chart configuration
 let chartSize = 10; // Default top 10
 
+// Theme state
+let currentTheme = localStorage.getItem('theme') || 'light';
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  // Apply saved theme
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  updateThemeButton();
+
   setupEventListeners();
   await loadAnalysis();
 });
@@ -50,6 +57,9 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Set up event listeners
  */
 function setupEventListeners() {
+  // Theme toggle
+  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+
   document.getElementById('back-btn').addEventListener('click', () => {
     window.location.href = 'manager.html';
   });
@@ -1422,6 +1432,25 @@ function scrollToTab(tabId) {
       }, 2000);
     }
   }, 100);
+}
+
+/**
+ * Toggle between light and dark theme
+ */
+function toggleTheme() {
+  currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  localStorage.setItem('theme', currentTheme);
+  updateThemeButton();
+}
+
+/**
+ * Update theme toggle button icon
+ */
+function updateThemeButton() {
+  const btn = document.getElementById('theme-toggle');
+  btn.textContent = currentTheme === 'light' ? '🌙' : '☀️';
+  btn.title = currentTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode';
 }
 
 console.log('[Analysis] UI loaded');
