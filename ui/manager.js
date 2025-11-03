@@ -113,14 +113,38 @@ async function loadAllTabs() {
   // Get synced tabs from storage
   const syncedTabs = await loadSyncedTabs();
 
-  // Merge local and synced tabs
-  allTabs = [...localTabs, ...syncedTabs];
+  // Deduplicate by URL: prefer local tabs over synced tabs
+  const urlMap = new Map();
+
+  // Add local tabs first (they take priority)
+  for (const tab of localTabs) {
+    urlMap.set(tab.url, tab);
+  }
+
+  // Add synced tabs only if URL doesn't exist in local tabs
+  let duplicateCount = 0;
+  for (const tab of syncedTabs) {
+    if (!urlMap.has(tab.url)) {
+      urlMap.set(tab.url, tab);
+    } else {
+      duplicateCount++;
+    }
+  }
+
+  if (duplicateCount > 0) {
+    console.log(`[Dedup] Removed ${duplicateCount} duplicate URLs (already open locally)`);
+  }
+
+  // Merge deduplicated tabs
+  allTabs = Array.from(urlMap.values());
   currentTabs = allTabs;
 
   // Calculate domain counts (across both local and synced)
+  // Normalize domains to merge www/m variants
   domainCounts = {};
   for (const tab of allTabs) {
-    domainCounts[tab.domain] = (domainCounts[tab.domain] || 0) + 1;
+    const normalizedDomain = normalizeDomain(tab.domain);
+    domainCounts[normalizedDomain] = (domainCounts[normalizedDomain] || 0) + 1;
   }
 
   // Calculate filter counts
@@ -325,7 +349,8 @@ async function createTabItemElement(tab, group) {
   // Domain with count and brand color
   const domain = document.createElement('span');
   domain.className = 'tab-item__domain';
-  const domainCount = domainCounts[tab.domain] || 0;
+  const normalizedDomain = normalizeDomain(tab.domain);
+  const domainCount = domainCounts[normalizedDomain] || 0;
   domain.textContent = `${tab.domain}${domainCount > 1 ? ` (${domainCount})` : ''}`;
 
   // Apply brand color
@@ -754,9 +779,22 @@ async function handleExport() {
 
 /**
  * Update statistics display
+ * Counts from allTabs (includes both local and synced)
  */
 async function updateStatistics() {
-  const counts = await groupManager.getGroupCounts();
+  // Count from allTabs instead of groupManager (which only knows local tabs)
+  const counts = {
+    total: allTabs.length,
+    main: 0,
+    staging: 0,
+    bin: 0,
+  };
+
+  // Count groups for all tabs
+  for (const tab of allTabs) {
+    const group = await groupManager.getGroup(tab.id);
+    counts[group]++;
+  }
 
   document.getElementById('stat-total').textContent = counts.total;
   document.getElementById('stat-main').textContent = counts.main;
@@ -830,42 +868,70 @@ function switchView(view) {
 }
 
 /**
+ * Normalize domain by removing www/m prefixes
+ */
+function normalizeDomain(domain) {
+  // Remove www., m., mobile. prefixes
+  return domain.replace(/^(www\.|m\.|mobile\.)/, '');
+}
+
+/**
  * Render groups view with domain cards grouped by category
  */
 function renderGroupsView(tabs) {
   const container = document.getElementById('groups-container');
   const countEl = document.getElementById('groups-count');
 
-  // Group tabs by domain
+  // Group tabs by normalized domain
   const domainGroups = {};
   for (const tab of tabs) {
-    const domain = tab.domain;
-    if (!domainGroups[domain]) {
-      domainGroups[domain] = [];
+    const normalizedDomain = normalizeDomain(tab.domain);
+    if (!domainGroups[normalizedDomain]) {
+      domainGroups[normalizedDomain] = [];
     }
-    domainGroups[domain].push(tab);
+    domainGroups[normalizedDomain].push(tab);
   }
 
-  // Sort domains by tab count (descending)
-  const sortedDomains = Object.keys(domainGroups).sort((a, b) => {
-    return domainGroups[b].length - domainGroups[a].length;
+  // Separate multi-tab domains and single-tab domains ("Loners")
+  const multiTabDomains = {};
+  const lonersTabs = [];
+
+  for (const [domain, tabsInDomain] of Object.entries(domainGroups)) {
+    if (tabsInDomain.length === 1) {
+      lonersTabs.push(...tabsInDomain);
+    } else {
+      multiTabDomains[domain] = tabsInDomain;
+    }
+  }
+
+  // Sort multi-tab domains by tab count (descending)
+  const sortedDomains = Object.keys(multiTabDomains).sort((a, b) => {
+    return multiTabDomains[b].length - multiTabDomains[a].length;
   });
 
-  countEl.textContent = sortedDomains.length;
+  // Update count (multi-tab domains + 1 for Loners if exists)
+  const totalGroups = sortedDomains.length + (lonersTabs.length > 0 ? 1 : 0);
+  countEl.textContent = totalGroups;
 
   // Clear container
   container.innerHTML = '';
 
-  if (sortedDomains.length === 0) {
+  if (totalGroups === 0) {
     container.innerHTML = '<p style="text-align: center; color: var(--color-text-secondary); padding: var(--spacing-xl);">No domains found</p>';
     return;
   }
 
-  // Create domain cards
+  // Create domain cards for multi-tab domains
   for (const domain of sortedDomains) {
-    const domainTabs = domainGroups[domain];
+    const domainTabs = multiTabDomains[domain];
     const card = createDomainCard(domain, domainTabs);
     container.appendChild(card);
+  }
+
+  // Create "Loners" card for single-tab domains
+  if (lonersTabs.length > 0) {
+    const lonersCard = createDomainCard('🎯 Loners', lonersTabs);
+    container.appendChild(lonersCard);
   }
 }
 
