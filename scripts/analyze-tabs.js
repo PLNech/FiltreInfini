@@ -192,59 +192,161 @@ function extractFeatures(tab) {
 }
 
 /**
- * Fetch page content and calculate reading time (with retries)
- * @param {string} url - Tab URL
- * @param {number} attempt - Current attempt number (1-3)
- * @returns {Promise<number>} Reading time in minutes (or null on error)
+ * Download Manager for fetching reading times with queue and retry logic
  */
-async function fetchReadingTime(url, attempt = 1) {
-  try {
-    // Skip non-http URLs
+class DownloadManager {
+  constructor() {
+    this.queue = [];
+    this.results = new Map(); // url -> readingTime or null
+    this.attempts = new Map(); // url -> attempt count
+    this.MAX_RETRIES = 3;
+    this.TIMEOUT_MS = 8000;
+    this.successCount = 0;
+    this.failureCount = 0;
+  }
+
+  /**
+   * Add URL to fetch queue
+   */
+  add(url) {
     if (!url.startsWith('http')) {
-      return null;
+      this.results.set(url, null);
+      return;
     }
+    this.queue.push(url);
+    this.attempts.set(url, 0);
+  }
 
-    // Create abort controller for proper cleanup
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; FiltreInfini/1.0; +https://github.com/PLNech/FiltreInfini)'
-      },
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+  /**
+   * Get result for a URL (blocking until available)
+   */
+  async getResult(url) {
+    while (!this.results.has(url)) {
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
+    return this.results.get(url);
+  }
 
-    const html = await response.text();
+  /**
+   * Fetch a single URL (with archive.ph fallback for paywalls)
+   */
+  async fetchOne(url) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
 
-    // Strip HTML tags and extract text content
-    const textContent = html
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
-      .replace(/<[^>]+>/g, ' ') // Remove all tags
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim();
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; FiltreInfini/1.0; +https://github.com/PLNech/FiltreInfini)'
+        },
+        signal: controller.signal
+      });
 
-    const wordCount = textContent.split(/\s+/).length;
-    const readingTimeMinutes = Math.max(1, Math.round(wordCount / 200)); // 200 words per minute
+      clearTimeout(timeoutId);
 
-    return readingTimeMinutes;
-  } catch (error) {
-    // Retry up to 3 times
-    if (attempt < 3) {
-      console.log(`\n   [fetch error] ${url} (attempt ${attempt}/3): ${error.message} - retrying...`);
-      return fetchReadingTime(url, attempt + 1);
+      // Paywall/403 detected - try archive.ph
+      if (response.status === 403 || response.status === 402) {
+        console.log(`\n   [paywall] ${url} - trying archive.ph...`);
+        return await this.fetchFromArchive(url);
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const html = await response.text();
+
+      // Strip HTML tags and extract text content
+      const textContent = html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const wordCount = textContent.split(/\s+/).length;
+      const readingTimeMinutes = Math.max(1, Math.round(wordCount / 200));
+
+      return readingTimeMinutes;
+    } catch (error) {
+      throw error;
     }
+  }
 
-    // Final failure after 3 attempts
-    console.log(`\n   [fetch FAILED] ${url} (gave up after 3 attempts): ${error.message}`);
-    return null;
+  /**
+   * Try to fetch from archive.ph
+   */
+  async fetchFromArchive(originalUrl) {
+    try {
+      const archiveUrl = `https://archive.ph/${originalUrl}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
+
+      const response = await fetch(archiveUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; FiltreInfini/1.0; +https://github.com/PLNech/FiltreInfini)'
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Archive HTTP ${response.status}`);
+      }
+
+      const html = await response.text();
+      const textContent = html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const wordCount = textContent.split(/\s+/).length;
+      return Math.max(1, Math.round(wordCount / 200));
+    } catch (error) {
+      throw new Error(`Archive failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Process the queue sequentially with retries
+   */
+  async processQueue() {
+    while (this.queue.length > 0) {
+      const url = this.queue.shift();
+      const attempt = this.attempts.get(url) + 1;
+      this.attempts.set(url, attempt);
+
+      try {
+        const readingTime = await this.fetchOne(url);
+        this.results.set(url, readingTime);
+        this.successCount++;
+      } catch (error) {
+        // Retry: add back to end of queue
+        if (attempt < this.MAX_RETRIES) {
+          console.log(`\n   [fetch error] ${url} (attempt ${attempt}/${this.MAX_RETRIES}): ${error.message} - queuing retry...`);
+          this.queue.push(url); // Add to END of queue
+        } else {
+          // Final failure
+          console.log(`\n   [fetch FAILED] ${url} (gave up after ${this.MAX_RETRIES} attempts): ${error.message}`);
+          this.results.set(url, null);
+          this.failureCount++;
+        }
+      }
+    }
+  }
+
+  /**
+   * Get current stats
+   */
+  getStats() {
+    return {
+      success: this.successCount,
+      failure: this.failureCount,
+      pending: this.queue.length
+    };
   }
 }
 
@@ -512,70 +614,68 @@ async function main() {
     const embedder = await pipeline('feature-extraction', 'embeddings');
     console.log(`   ✓ Embeddings loaded in ${((Date.now() - startEmbeddings) / 1000).toFixed(1)}s\n`);
 
-    // Analyze each tab in batches
+    // Initialize Download Manager and queue all URLs
+    console.log(`📥 Initializing download manager for ${sample.length} URLs...\n`);
+    const downloadManager = new DownloadManager();
+    for (const tab of sample) {
+      downloadManager.add(tab.url);
+    }
+
+    // Start processing queue in background
+    const queuePromise = downloadManager.processQueue();
+
+    // Analyze each tab in batches (ML models only)
     console.log(`🧠 Running comprehensive analysis (batches of ${BATCH_SIZE})...\n`);
     const results = [];
     const startAnalysis = Date.now();
-
-    let readingTimeSuccesses = 0;
-    let readingTimeFailures = 0;
 
     for (let batchStart = 0; batchStart < sample.length; batchStart += BATCH_SIZE) {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, sample.length);
       const batch = sample.slice(batchStart, batchEnd);
 
-      process.stdout.write(`\r   Progress: ${batchEnd}/${sample.length} (reading time: ${readingTimeSuccesses}✓ ${readingTimeFailures}✗)`);
+      const stats = downloadManager.getStats();
+      process.stdout.write(`\r   Progress: ${batchEnd}/${sample.length} | DL: ${stats.success}✓ ${stats.failure}✗ ${stats.pending}⏳`);
 
-      const batchStartTime = Date.now();
+      // Process batch: Run ML models in parallel
+      const batchResults = await Promise.all(
+        batch.map(async (tab) => {
+          const [classification, entities, embedding] = await Promise.all([
+            classifyTab(tab, classifier),
+            extractEntities(tab, ner),
+            computeEmbedding(tab, embedder)
+          ]);
 
-      // Process batch: ML models in parallel, but reading time sequentially (rate limiting)
-      const batchResults = [];
+          // Extract search query if applicable
+          const searchQuery = extractSearchQuery(tab.url);
 
-      for (const tab of batch) {
-        // Run ML models in parallel (fast, local)
-        const [classification, entities, embedding] = await Promise.all([
-          classifyTab(tab, classifier),
-          extractEntities(tab, ner),
-          computeEmbedding(tab, embedder)
-        ]);
+          // Wait for reading time from download manager
+          const readingTimeMinutes = await downloadManager.getResult(tab.url);
 
-        // Fetch reading time sequentially (slow, network) to avoid overwhelming connections
-        const readingTimeMinutes = await fetchReadingTime(tab.url).catch(() => null);
-
-        if (readingTimeMinutes) {
-          readingTimeSuccesses++;
-        } else {
-          readingTimeFailures++;
-        }
-
-        // Extract search query if applicable
-        const searchQuery = extractSearchQuery(tab.url);
-
-        batchResults.push({
-          ...tab,
-          classification,
-          entities,
-          embedding,
-          readingTimeMinutes: readingTimeMinutes || undefined,
-          searchQuery: searchQuery || undefined,
-          analyzedAt: Date.now()
-        });
-      }
+          return {
+            ...tab,
+            classification,
+            entities,
+            embedding,
+            readingTimeMinutes: readingTimeMinutes || undefined,
+            searchQuery: searchQuery || undefined,
+            analyzedAt: Date.now()
+          };
+        })
+      );
 
       results.push(...batchResults);
-
-      const batchTime = Date.now() - batchStartTime;
-      if (batchTime > 60000) {
-        console.log(`\n   ⚠️  Batch took ${(batchTime / 1000).toFixed(1)}s (slow network?)`);
-      }
     }
 
-    console.log(`\r   Progress: ${sample.length}/${sample.length} (reading time: ${readingTimeSuccesses}✓ ${readingTimeFailures}✗)`);
+    // Wait for all downloads to complete
+    await queuePromise;
+
+    const stats = downloadManager.getStats();
+    console.log(`\r   Progress: ${sample.length}/${sample.length} | DL: ${stats.success}✓ ${stats.failure}✗ ${stats.pending}⏳`);
 
     const analysisTime = Date.now() - startAnalysis;
     console.log(`\n✓ Analysis complete in ${(analysisTime / 1000).toFixed(1)}s`);
     console.log(`  Average: ${Math.round(analysisTime / results.length)}ms per tab`);
-    console.log(`  Reading time: ${readingTimeSuccesses} successful, ${readingTimeFailures} failed (${((readingTimeSuccesses / results.length) * 100).toFixed(1)}% success rate)\n`);
+    console.log(`  Reading time: ${stats.success} successful, ${stats.failure} failed (${((stats.success / results.length) * 100).toFixed(1)}% success rate)\n`);
 
     // Find similar tabs
     findSimilarTabs(results);
