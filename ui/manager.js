@@ -1089,8 +1089,13 @@ async function handleLoadMetadata(tab) {
   }
 
   try {
-    // Fetch metadata
-    const metadata = await metadataManager.getMetadata(tab.id);
+    // Fetch metadata - use direct URL fetch for synced tabs, content script for local tabs
+    let metadata;
+    if (tab.source === 'synced') {
+      metadata = await metadataManager.fetchMetadataFromUrl(tab.url, tab.id);
+    } else {
+      metadata = await metadataManager.getMetadata(tab.id);
+    }
 
     if (!metadata) {
       modalBody.innerHTML = `
@@ -1122,7 +1127,15 @@ async function handleLoadMetadata(tab) {
         try {
           // Force refresh metadata
           await metadataManager.clearMetadata(tab.id);
-          const freshMetadata = await metadataManager.getMetadata(tab.id, true);
+
+          // Use appropriate fetch method based on tab source
+          let freshMetadata;
+          if (tab.source === 'synced') {
+            freshMetadata = await metadataManager.fetchMetadataFromUrl(tab.url, tab.id);
+          } else {
+            freshMetadata = await metadataManager.getMetadata(tab.id, true);
+          }
+
           if (freshMetadata) {
             modalBody.innerHTML = renderMetadata(freshMetadata, tab);
             // Re-hook reload button recursively
