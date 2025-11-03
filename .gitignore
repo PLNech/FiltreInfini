@@ -29,3 +29,6 @@ npm-debug.log*
 .env
 .env.local
 data/
+
+# ML Models (downloaded via scripts/download-models.js)
+lib/vendor/
