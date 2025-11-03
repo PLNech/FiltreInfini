@@ -229,10 +229,8 @@ async function fetchReadingTime(url) {
 
     return readingTimeMinutes;
   } catch (error) {
-    // Log first 5 errors for debugging
-    if (Math.random() < 0.05) {
-      console.log(`\n   [fetch error] ${url}: ${error.message}`);
-    }
+    // Log all errors for debugging
+    console.log(`\n   [fetch error] ${url}: ${error.message}`);
     return null;
   }
 }
