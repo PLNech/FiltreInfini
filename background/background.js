@@ -189,9 +189,15 @@ browser.runtime.onInstalled.addListener(async (details) => {
 
   // Trigger ML Worker initialization (lazy load in background)
   console.log('[Background] Triggering ML Worker initialization...');
-  MLClassifierWorker.getInstance().catch(err => {
-    console.error('[Background] ML Worker failed to initialize:', err);
-  });
+
+  // Check if MLClassifierWorker is available
+  if (typeof MLClassifierWorker !== 'undefined') {
+    MLClassifierWorker.getInstance().catch(err => {
+      console.error('[Background] ML Worker failed to initialize:', err);
+    });
+  } else {
+    console.error('[Background] MLClassifierWorker not defined! Check if ml-worker.js loaded.');
+  }
 });
 
 // Initialize tab tracker on browser startup
@@ -201,9 +207,15 @@ browser.runtime.onStartup.addListener(async () => {
 
   // Trigger ML Worker initialization (lazy load in background)
   console.log('[Background] Triggering ML Worker initialization...');
-  MLClassifierWorker.getInstance().catch(err => {
-    console.error('[Background] ML Worker failed to initialize:', err);
-  });
+
+  // Check if MLClassifierWorker is available
+  if (typeof MLClassifierWorker !== 'undefined') {
+    MLClassifierWorker.getInstance().catch(err => {
+      console.error('[Background] ML Worker failed to initialize:', err);
+    });
+  } else {
+    console.error('[Background] MLClassifierWorker not defined! Check if ml-worker.js loaded.');
+  }
 });
 
 // Handle alarms
@@ -267,11 +279,19 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'getMLStatus') {
-    sendResponse({
-      ready: MLClassifierWorker.instance !== null,
-      loading: MLClassifierWorker.isLoading,
-      error: MLClassifierWorker.loadError?.message || null
-    });
+    if (typeof MLClassifierWorker !== 'undefined') {
+      sendResponse({
+        ready: MLClassifierWorker.instance !== null,
+        loading: MLClassifierWorker.isLoading,
+        error: MLClassifierWorker.loadError?.message || null
+      });
+    } else {
+      sendResponse({
+        ready: false,
+        loading: false,
+        error: 'MLClassifierWorker not loaded'
+      });
+    }
     return false;
   }
 });
@@ -280,6 +300,10 @@ async function handleClassifyTab(message, sendResponse) {
   try {
     const { tab, sessionContext } = message;
     console.log('[Background] Classifying tab:', tab.title);
+
+    if (typeof MLClassifierWorker === 'undefined') {
+      throw new Error('MLClassifierWorker not loaded');
+    }
 
     const result = await MLClassifierWorker.classifyTab(tab, sessionContext);
 
@@ -302,6 +326,10 @@ async function handleClassifyBatch(message, sendResponse) {
   try {
     const { tabs, sessionContext, onProgress } = message;
     console.log(`[Background] Classifying batch: ${tabs.length} tabs`);
+
+    if (typeof MLClassifierWorker === 'undefined') {
+      throw new Error('MLClassifierWorker not loaded');
+    }
 
     const results = [];
     for (let i = 0; i < tabs.length; i++) {

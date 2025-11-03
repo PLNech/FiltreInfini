@@ -246,6 +246,12 @@ class MLClassifierWorker {
 console.log('[ML Worker] ✓ Ready');
 
 // Export for use in background.js
+// In Firefox background scripts, use self (global scope) instead of window
+if (typeof self !== 'undefined') {
+  self.MLClassifierWorker = MLClassifierWorker;
+}
+
+// Also export to window if it exists (for compatibility)
 if (typeof window !== 'undefined') {
   window.MLClassifierWorker = MLClassifierWorker;
 }

@@ -2,6 +2,7 @@
   "name": "filtre-infini",
   "version": "0.1.1",
   "description": "Advanced tab management extension for Firefox mobile",
+  "type": "module",
   "private": true,
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
