@@ -269,6 +269,81 @@
       <!-- Populated by JS -->
     </div>
 
+    <!-- Filters -->
+    <div class="filters-section">
+      <h3 style="margin-bottom: 15px;">🔍 Filters</h3>
+
+      <div class="filter-group">
+        <label class="filter-label">Search</label>
+        <input
+          type="text"
+          id="search-input"
+          class="search-box"
+          placeholder="Search by title, domain, or entity..."
+        >
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Intent</label>
+        <div class="filter-pills" id="intent-filters">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Status</label>
+        <div class="filter-pills" id="status-filters">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Content Type</label>
+        <div class="filter-pills" id="type-filters">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Top Domains</label>
+        <div class="filter-pills" id="domain-filters">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div style="margin-top: 15px;">
+        <button class="btn" id="clear-filters-btn">Clear All Filters</button>
+        <span id="results-count" style="margin-left: 15px; color: var(--text-secondary);"></span>
+      </div>
+    </div>
+
+    <!-- Similar Tabs Banner -->
+    <div id="similar-banner" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+      <div id="similar-banner-content" style="flex: 1;">
+        <!-- Populated by JS -->
+      </div>
+      <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+          <label style="font-size: 13px; white-space: nowrap; font-weight: 600;">Similarity Threshold:</label>
+          <input type="range" id="similarity-threshold" min="0.5" max="0.95" step="0.05" value="0.7" style="flex: 1; min-width: 150px;">
+          <span id="threshold-value" style="font-size: 14px; font-weight: 600; min-width: 40px;">0.70</span>
+        </div>
+        <button id="clear-similar-btn" class="btn" style="background: white; color: #667eea; border: none; padding: 8px 16px; font-weight: 600;">✕ Clear Filter</button>
+      </div>
+    </div>
+
+    <!-- Tabs List -->
+    <div id="tabs-container">
+      <div class="loading">Loading analysis data...</div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination" style="display: none;">
+      <button class="page-btn" id="prev-page">← Previous</button>
+      <span class="page-info" id="page-info"></span>
+      <button class="page-btn" id="next-page">Next →</button>
+    </div>
+
     <!-- Charts Section with Tabs -->
     <div id="charts-section" style="display: none; margin-bottom: 30px;">
       <div style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
@@ -381,81 +456,6 @@
         background: rgba(102, 126, 234, 0.1);
       }
     </style>
-
-    <!-- Filters -->
-    <div class="filters-section">
-      <h3 style="margin-bottom: 15px;">🔍 Filters</h3>
-
-      <div class="filter-group">
-        <label class="filter-label">Search</label>
-        <input
-          type="text"
-          id="search-input"
-          class="search-box"
-          placeholder="Search by title, domain, or entity..."
-        >
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label">Intent</label>
-        <div class="filter-pills" id="intent-filters">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label">Status</label>
-        <div class="filter-pills" id="status-filters">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label">Content Type</label>
-        <div class="filter-pills" id="type-filters">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label">Top Domains</label>
-        <div class="filter-pills" id="domain-filters">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-
-      <div style="margin-top: 15px;">
-        <button class="btn" id="clear-filters-btn">Clear All Filters</button>
-        <span id="results-count" style="margin-left: 15px; color: var(--text-secondary);"></span>
-      </div>
-    </div>
-
-    <!-- Similar Tabs Banner -->
-    <div id="similar-banner" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-      <div id="similar-banner-content" style="flex: 1;">
-        <!-- Populated by JS -->
-      </div>
-      <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
-        <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-          <label style="font-size: 13px; white-space: nowrap; font-weight: 600;">Similarity Threshold:</label>
-          <input type="range" id="similarity-threshold" min="0.5" max="0.95" step="0.05" value="0.7" style="flex: 1; min-width: 150px;">
-          <span id="threshold-value" style="font-size: 14px; font-weight: 600; min-width: 40px;">0.70</span>
-        </div>
-        <button id="clear-similar-btn" class="btn" style="background: white; color: #667eea; border: none; padding: 8px 16px; font-weight: 600;">✕ Clear Filter</button>
-      </div>
-    </div>
-
-    <!-- Tabs List -->
-    <div id="tabs-container">
-      <div class="loading">Loading analysis data...</div>
-    </div>
-
-    <!-- Pagination -->
-    <div class="pagination" id="pagination" style="display: none;">
-      <button class="page-btn" id="prev-page">← Previous</button>
-      <span class="page-info" id="page-info"></span>
-      <button class="page-btn" id="next-page">Next →</button>
-    </div>
   </div>
 
   <!-- Chart.js (local) -->
