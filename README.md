@@ -39,6 +39,39 @@ npm run build
 
 ## Features
 
+### 🤖 ML-Powered Analysis (New!)
+
+Analyze your entire tab collection with machine learning:
+
+```bash
+# Download ML models (67MB, one-time)
+node scripts/download-models.js
+
+# Analyze all tabs
+node scripts/analyze-tabs.js --all
+
+# Or analyze a sample
+node scripts/analyze-tabs.js --sample 100
+```
+
+**What it does:**
+- **3D Classification** - Intent (informational/navigational/transactional), Status (to-read/reference/done), Content Type (content/communication/search)
+- **Named Entity Recognition** - Extract people, organizations, locations from titles/URLs
+- **Semantic Similarity** - Find related tabs using embedding-based similarity (cosine distance)
+- **Search Query Detection** - Identify search results and extract queries
+
+**Analysis UI** (`ui/analysis.html`):
+- **Interactive charts** - Visualize classification distribution, entity types, domains (Chart.js with lazy loading)
+- **Powerful filters** - Search, filter by intent/status/type, domain pills
+- **Similar tabs** - Click "🔗 X similar" to find related tabs with adjustable similarity threshold
+- **Entity display** - See people, organizations, locations extracted from each tab
+- **Export** - All analysis saved to `data/analysis-TIMESTAMP.json`
+
+**Models used** (Transformers.js/ONNX Runtime):
+- Classification: `Xenova/distilbert-base-uncased-mnli` (zero-shot)
+- NER: `Xenova/bert-base-NER`
+- Embeddings: `Xenova/all-MiniLM-L6-v2`
+
 ### Query Language
 
 Powerful, composable filters:
@@ -143,20 +176,31 @@ npm run dev:android
 filtre-infini/
 ├── manifest.json           # MV3 manifest
 ├── ui/                     # Full-page interface
-│   ├── manager.html
+│   ├── manager.html        # Main tab manager
 │   ├── manager.js
+│   ├── analysis.html       # ML analysis viewer
+│   ├── analysis.js
 │   └── styles/
 ├── lib/                    # Core logic
-│   ├── tab-query.js       # Query engine
-│   ├── query-parser.js    # QL parser
-│   ├── group-manager.js   # Main/Staging/Bin
-│   ├── metadata-*.js      # Metadata system
-│   └── storage.js         # storage.local wrapper
-├── background/            # Service worker
-│   └── background.js      # Alarms, cleanup
-├── content-scripts/       # Metadata extraction
+│   ├── tab-query.js        # Query engine
+│   ├── query-parser.js     # QL parser
+│   ├── group-manager.js    # Main/Staging/Bin
+│   ├── metadata-*.js       # Metadata system
+│   ├── domain-knowledge.js # Search engine detection
+│   ├── context-features.js # Session context for ML
+│   ├── feedback-manager.js # User feedback for ML
+│   ├── model-preloader.js  # ML model caching
+│   └── storage.js          # storage.local wrapper
+├── background/             # Service worker
+│   ├── background.js       # Alarms, cleanup
+│   └── ml-worker.js        # ML classification worker
+├── scripts/                # Analysis scripts
+│   ├── download-models.js  # Download ML models
+│   ├── analyze-tabs.js     # Batch ML analysis
+│   └── classify-tabs.js    # Classify specific tabs
+├── content-scripts/        # Metadata extraction
 │   └── metadata-extractor.js
-└── tests/                 # Vitest + Playwright
+└── tests/                  # Vitest + Playwright
     ├── unit/
     └── playwright/
 ```
@@ -192,6 +236,11 @@ Contributions welcome!
 - [x] Three-tier workflow (Main/Staging/Bin)
 - [x] Broken tab detection
 - [x] Description search with ranking
+- [x] ML-powered classification (intent, status, content type)
+- [x] Named entity recognition (people, orgs, locations)
+- [x] Semantic similarity search
+- [x] Interactive analysis UI with charts
+- [ ] OpenStreetMap integration for location validation
 - [ ] Faceted filters with sliders (age, reading time)
 - [ ] Advanced metadata (GitHub issues, Confluence pages)
 - [ ] Swipe UI (if feasible on mobile)
@@ -202,6 +251,8 @@ Contributions welcome!
 - **Vanilla JavaScript** - No frameworks
 - **Manifest V3** - Future-proof
 - **storage.local** - Works on Android
+- **Transformers.js** - Run ML models in browser (ONNX Runtime)
+- **Chart.js** - Data visualization
 - **Vitest** - Unit testing
 - **web-ext** - Build & dev tools
 
