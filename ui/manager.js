@@ -96,6 +96,11 @@ function setupEventListeners() {
   // Close modal on overlay click
   document.getElementById('import-guide-modal').querySelector('.modal__overlay').addEventListener('click', closeImportGuideModal);
 
+  // Analysis View
+  document.getElementById('analysis-view-btn').addEventListener('click', () => {
+    window.location.href = 'analysis.html';
+  });
+
   // ML Debug Modal
   const mlDebugBtn = document.getElementById('ml-debug-btn');
   if (mlDebugBtn) {

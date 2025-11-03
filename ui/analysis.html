@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tab Analysis - FiltreInfini</title>
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/layouts.css">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+
+  <style>
+    .analysis-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 15px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: var(--primary-color);
+      margin-bottom: 5px;
+    }
+
+    .stat-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .filters-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .filter-group {
+      margin-bottom: 15px;
+    }
+
+    .filter-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .filter-label {
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: block;
+      color: var(--text-primary);
+    }
+
+    .filter-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter-pill {
+      padding: 6px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--bg-primary);
+    }
+
+    .filter-pill:hover {
+      border-color: var(--primary-color);
+      background: var(--primary-color-light);
+    }
+
+    .filter-pill.active {
+      background: var(--primary-color);
+      color: white;
+      border-color: var(--primary-color);
+    }
+
+    .search-box {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .tabs-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .tab-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 15px;
+      transition: all 0.2s;
+    }
+
+    .tab-card:hover {
+      border-color: var(--primary-color);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .tab-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 10px;
+    }
+
+    .tab-title {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 5px;
+      flex: 1;
+    }
+
+    .tab-domain {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+
+    .tab-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .badge {
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge-intent { background: #e3f2fd; color: #1976d2; }
+    .badge-status { background: #f3e5f5; color: #7b1fa2; }
+    .badge-type { background: #e8f5e9; color: #388e3c; }
+
+    .tab-entities {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .entity-group {
+      margin-bottom: 4px;
+    }
+
+    .entity-label {
+      font-weight: 600;
+      margin-right: 6px;
+    }
+
+    .similar-tabs-btn {
+      padding: 4px 10px;
+      font-size: 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--bg-primary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .similar-tabs-btn:hover {
+      background: var(--primary-color-light);
+      border-color: var(--primary-color);
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-top: 30px;
+      padding: 20px;
+    }
+
+    .page-btn {
+      padding: 8px 16px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--bg-primary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .page-btn:hover:not(:disabled) {
+      background: var(--primary-color-light);
+      border-color: var(--primary-color);
+    }
+
+    .page-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .page-info {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="analysis-container">
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h1>📊 Tab Analysis</h1>
+        <p id="analysis-info" style="color: var(--text-secondary); margin-top: 5px;">
+          No analysis loaded
+        </p>
+      </div>
+      <div>
+        <button class="btn" id="back-btn">← Back to Manager</button>
+        <button class="btn btn--primary" id="load-file-btn">📂 Load Analysis File</button>
+        <input type="file" id="file-input" accept=".json" style="display: none;">
+      </div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="stats-grid" id="stats-grid">
+      <!-- Populated by JS -->
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-section">
+      <h3 style="margin-bottom: 15px;">🔍 Filters</h3>
+
+      <div class="filter-group">
+        <label class="filter-label">Search</label>
+        <input
+          type="text"
+          id="search-input"
+          class="search-box"
+          placeholder="Search by title, domain, or entity..."
+        >
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Intent</label>
+        <div class="filter-pills" id="intent-filters">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Status</label>
+        <div class="filter-pills" id="status-filters">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Content Type</label>
+        <div class="filter-pills" id="type-filters">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Top Domains</label>
+        <div class="filter-pills" id="domain-filters">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div style="margin-top: 15px;">
+        <button class="btn" id="clear-filters-btn">Clear All Filters</button>
+        <span id="results-count" style="margin-left: 15px; color: var(--text-secondary);"></span>
+      </div>
+    </div>
+
+    <!-- Tabs List -->
+    <div id="tabs-container">
+      <div class="loading">Loading analysis data...</div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination" style="display: none;">
+      <button class="page-btn" id="prev-page">← Previous</button>
+      <span class="page-info" id="page-info"></span>
+      <button class="page-btn" id="next-page">Next →</button>
+    </div>
+  </div>
+
+  <script src="analysis.js"></script>
+</body>
+</html>
