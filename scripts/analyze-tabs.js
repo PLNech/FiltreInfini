@@ -204,12 +204,18 @@ async function fetchReadingTime(url, attempt = 1) {
       return null;
     }
 
+    // Create abort controller for proper cleanup
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; FiltreInfini/1.0; +https://github.com/PLNech/FiltreInfini)'
       },
-      signal: AbortSignal.timeout(8000) // 8s timeout (sequential fetching)
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
