@@ -492,13 +492,35 @@ function renderPage() {
     </div>
   `;
 
-  // Add event delegation for similar tabs buttons
-  container.addEventListener('click', (e) => {
+  // Add event delegation for tab interactions
+  container.addEventListener('click', async (e) => {
+    // Handle similar tabs button
     if (e.target.classList.contains('similar-tabs-btn') || e.target.closest('.similar-tabs-btn')) {
       const btn = e.target.classList.contains('similar-tabs-btn') ? e.target : e.target.closest('.similar-tabs-btn');
       const tabId = btn.dataset.tabId;
       if (tabId) {
         showSimilarTabs(tabId);
+      }
+      return;
+    }
+
+    // Handle tab card click (switch to tab)
+    const tabCard = e.target.closest('.tab-card');
+    if (tabCard) {
+      // Don't switch if clicking on a link or button
+      if (e.target.tagName === 'A' || e.target.closest('a') || e.target.closest('button')) {
+        return;
+      }
+
+      const tabId = parseInt(tabCard.dataset.tabId);
+      try {
+        await browser.tabs.update(tabId, { active: true });
+        // Also focus the window
+        const tab = await browser.tabs.get(tabId);
+        await browser.windows.update(tab.windowId, { focused: true });
+      } catch (error) {
+        console.error('Failed to switch to tab:', error);
+        alert(`Failed to switch to tab: ${error.message}`);
       }
     }
   });
@@ -579,12 +601,12 @@ function renderTabCard(tab) {
   ` : '';
 
   return `
-    <div class="tab-card">
+    <div class="tab-card" data-tab-id="${tab.id}" style="cursor: pointer; transition: all 0.2s;">
       <div class="tab-header">
         <div style="flex: 1;">
-          <div class="tab-title">${escapeHtml(tab.title)}${similarityBadge}</div>
+          <div class="tab-title" style="transition: text-decoration 0.2s;">${escapeHtml(tab.title)}${similarityBadge}</div>
           <div class="tab-domain">
-            <a href="${tab.url}" target="_blank">${tab.domain}</a>
+            <a href="${tab.url}" target="_blank" onclick="event.stopPropagation();">${tab.domain}</a>
           </div>
         </div>
         ${similarBtn}
