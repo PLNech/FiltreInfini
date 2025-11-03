@@ -199,10 +199,58 @@ class DownloadManager {
     this.queue = [];
     this.results = new Map(); // url -> readingTime or null
     this.attempts = new Map(); // url -> attempt count
+    this.domainLastFetch = new Map(); // domain -> timestamp of last fetch
+    this.domainBackoff = new Map(); // domain -> backoff delay in ms
     this.MAX_RETRIES = 3;
     this.TIMEOUT_MS = 8000;
+    this.MIN_DOMAIN_DELAY = 1000; // 1s between requests to same domain
     this.successCount = 0;
     this.failureCount = 0;
+  }
+
+  /**
+   * Get domain from URL
+   */
+  getDomain(url) {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Check if we can fetch from this domain now (rate limiting)
+   */
+  canFetchDomain(domain) {
+    const lastFetch = this.domainLastFetch.get(domain) || 0;
+    const backoff = this.domainBackoff.get(domain) || this.MIN_DOMAIN_DELAY;
+    const elapsed = Date.now() - lastFetch;
+    return elapsed >= backoff;
+  }
+
+  /**
+   * Mark domain as fetched
+   */
+  markDomainFetched(domain) {
+    this.domainLastFetch.set(domain, Date.now());
+  }
+
+  /**
+   * Increase backoff for domain (exponential)
+   */
+  increaseDomainBackoff(domain) {
+    const currentBackoff = this.domainBackoff.get(domain) || this.MIN_DOMAIN_DELAY;
+    const newBackoff = Math.min(currentBackoff * 2, 60000); // Max 60s
+    this.domainBackoff.set(domain, newBackoff);
+    console.log(`\n   [rate limit] ${domain} - increasing backoff to ${(newBackoff / 1000).toFixed(1)}s`);
+  }
+
+  /**
+   * Reset backoff for domain (on success)
+   */
+  resetDomainBackoff(domain) {
+    this.domainBackoff.set(domain, this.MIN_DOMAIN_DELAY);
   }
 
   /**
@@ -349,11 +397,22 @@ class DownloadManager {
   }
 
   /**
-   * Process the queue sequentially with retries
+   * Process the queue sequentially with retries and per-domain rate limiting
    */
   async processQueue() {
     while (this.queue.length > 0) {
       const url = this.queue.shift();
+      const domain = this.getDomain(url);
+
+      // Check if we can fetch from this domain (rate limiting)
+      if (!this.canFetchDomain(domain)) {
+        // Can't fetch yet, add back to end of queue
+        this.queue.push(url);
+        // Wait a bit before trying next URL
+        await new Promise(resolve => setTimeout(resolve, 100));
+        continue;
+      }
+
       const attempt = this.attempts.get(url) + 1;
       this.attempts.set(url, attempt);
 
@@ -361,7 +420,16 @@ class DownloadManager {
         const readingTime = await this.fetchOne(url);
         this.results.set(url, readingTime);
         this.successCount++;
+        this.markDomainFetched(domain);
+        this.resetDomainBackoff(domain); // Success: reset backoff
       } catch (error) {
+        this.markDomainFetched(domain);
+
+        // Handle 429 (rate limit) - increase backoff
+        if (error.message.includes('429')) {
+          this.increaseDomainBackoff(domain);
+        }
+
         // Retry: add back to end of queue
         if (attempt < this.MAX_RETRIES) {
           console.log(`\n   [fetch error] ${url} (attempt ${attempt}/${this.MAX_RETRIES}): ${error.message} - queuing retry...`);
