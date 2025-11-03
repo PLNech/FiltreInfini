@@ -37,6 +37,9 @@ let lastLoadedFile = null;
 let leafletMap = null;
 let geocodingCache = {};
 
+// Chart configuration
+let chartSize = 10; // Default top 10
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
@@ -117,6 +120,17 @@ function setupEventListeners() {
 
   // Geocode locations button
   document.getElementById('geocode-locations-btn').addEventListener('click', geocodeAndMapLocations);
+
+  // Chart size slider
+  document.getElementById('chart-size-slider').addEventListener('input', (e) => {
+    chartSize = parseInt(e.target.value);
+    document.getElementById('chart-size-value').textContent = `Top ${chartSize}`;
+
+    // Re-render current tab's charts
+    if (analysisData && currentChartTab !== 'overview') {
+      renderChartsForTab(currentChartTab);
+    }
+  });
 }
 
 /**
@@ -131,7 +145,17 @@ async function loadAnalysisFromFile(file) {
 
     console.log(`[Analysis] Loaded ${analysisData.tabs.length} analyzed tabs`);
 
-    // Only cache filename (data is too big for storage)
+    // Load cached geocoding results from localStorage
+    const cachedGeocodingKey = `geocoding_${file.name}`;
+    const cachedGeocoding = localStorage.getItem(cachedGeocodingKey);
+    if (cachedGeocoding) {
+      geocodingCache = JSON.parse(cachedGeocoding);
+      console.log(`[Analysis] Loaded ${Object.keys(geocodingCache).length} cached geocoding results`);
+    } else {
+      geocodingCache = {};
+    }
+
+    // Cache filename (for reload button)
     localStorage.setItem('lastAnalysisFilename', file.name);
     console.log(`[Analysis] Cached filename: ${file.name}`);
 
@@ -767,8 +791,8 @@ function renderChartsForTab(tabName) {
       }
     }));
   } else if (tabName === 'entities') {
-    // Top People
-    const topPeople = Object.entries(statistics.topEntities.people).slice(0, 10);
+    // Top People (use chartSize)
+    const topPeople = Object.entries(statistics.topEntities.people).slice(0, chartSize);
     chartInstances[tabName].push(new Chart(document.getElementById('people-chart'), {
       type: 'bar',
       data: {
@@ -806,8 +830,8 @@ function renderChartsForTab(tabName) {
       }
     }));
 
-    // Top Organizations
-    const topOrgs = Object.entries(statistics.topEntities.organizations).slice(0, 10);
+    // Top Organizations (use chartSize)
+    const topOrgs = Object.entries(statistics.topEntities.organizations).slice(0, chartSize);
     chartInstances[tabName].push(new Chart(document.getElementById('orgs-chart'), {
       type: 'bar',
       data: {
@@ -845,8 +869,8 @@ function renderChartsForTab(tabName) {
       }
     }));
 
-    // Top Locations
-    const topLocs = Object.entries(statistics.topEntities.locations).slice(0, 10);
+    // Top Locations (use chartSize)
+    const topLocs = Object.entries(statistics.topEntities.locations).slice(0, chartSize);
     chartInstances[tabName].push(new Chart(document.getElementById('locations-chart'), {
       type: 'bar',
       data: {
@@ -884,8 +908,8 @@ function renderChartsForTab(tabName) {
       }
     }));
   } else if (tabName === 'domains') {
-    // Top Domains
-    const topDomains = Object.entries(statistics.topDomains).slice(0, 15);
+    // Top Domains (use chartSize)
+    const topDomains = Object.entries(statistics.topDomains).slice(0, chartSize);
     chartInstances[tabName].push(new Chart(document.getElementById('domains-chart'), {
       type: 'bar',
       data: {
@@ -920,7 +944,7 @@ function renderChartsForTab(tabName) {
 
       const topSearchDomains = Object.entries(searchDomains)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
+        .slice(0, chartSize);
 
       document.getElementById('search-chart-container').style.display = 'block';
 
@@ -1103,6 +1127,14 @@ async function geocodeAndMapLocations() {
   statusText.textContent = `✓ Geocoded ${validated} of ${totalLocations} locations (${totalLocations - validated} filtered or not found)`;
   button.disabled = false;
   button.textContent = '🔄 Re-geocode Locations';
+
+  // Save geocoding cache to localStorage
+  const filename = localStorage.getItem('lastAnalysisFilename');
+  if (filename) {
+    const cacheKey = `geocoding_${filename}`;
+    localStorage.setItem(cacheKey, JSON.stringify(geocodingCache));
+    console.log(`[Analysis] Saved ${Object.keys(geocodingCache).length} geocoding results to localStorage`);
+  }
 }
 
 console.log('[Analysis] UI loaded');
