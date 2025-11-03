@@ -25,12 +25,17 @@ let chartInstances = {
   overview: [],
   classification: [],
   entities: [],
-  domains: []
+  domains: [],
+  map: []
 };
 let currentChartTab = 'overview';
 
 // Last loaded file for quick reload
 let lastLoadedFile = null;
+
+// Map state
+let leafletMap = null;
+let geocodingCache = {};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -109,6 +114,9 @@ function setupEventListeners() {
       switchChartTab(tabName);
     });
   });
+
+  // Geocode locations button
+  document.getElementById('geocode-locations-btn').addEventListener('click', geocodeAndMapLocations);
 }
 
 /**
@@ -951,6 +959,142 @@ function renderCharts() {
 
   // Render initial tab (overview)
   renderChartsForTab('overview');
+}
+
+/**
+ * Geocode a location using Nominatim API
+ */
+async function geocodeLocation(locationName) {
+  // Check cache first
+  if (geocodingCache[locationName]) {
+    return geocodingCache[locationName];
+  }
+
+  // Filter out known non-locations
+  const nonLocations = ['duck', 'duckduckgo', 'google', 'wikipedia', 'amazon', 'reddit'];
+  if (nonLocations.includes(locationName.toLowerCase())) {
+    geocodingCache[locationName] = null;
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationName)}&limit=1`,
+      {
+        headers: {
+          'User-Agent': 'FiltreInfini/0.1 (Tab Analysis Extension)'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      console.warn(`Geocoding failed for "${locationName}":`, response.status);
+      geocodingCache[locationName] = null;
+      return null;
+    }
+
+    const results = await response.json();
+
+    if (results && results.length > 0) {
+      const result = {
+        name: results[0].display_name,
+        lat: parseFloat(results[0].lat),
+        lon: parseFloat(results[0].lon)
+      };
+      geocodingCache[locationName] = result;
+      return result;
+    } else {
+      geocodingCache[locationName] = null;
+      return null;
+    }
+  } catch (error) {
+    console.error(`Geocoding error for "${locationName}":`, error);
+    geocodingCache[locationName] = null;
+    return null;
+  }
+}
+
+/**
+ * Geocode and map all locations
+ */
+async function geocodeAndMapLocations() {
+  const { statistics } = analysisData;
+  const statusEl = document.getElementById('map-status');
+  const statusText = document.getElementById('map-status-text');
+  const button = document.getElementById('geocode-locations-btn');
+
+  // Show status
+  statusEl.style.display = 'block';
+  button.disabled = true;
+  button.textContent = '⏳ Geocoding...';
+
+  // Get all location entities
+  const locationEntities = Object.entries(statistics.topEntities.locations);
+  const totalLocations = locationEntities.length;
+
+  statusText.textContent = `Geocoding ${totalLocations} locations... (1 req/sec rate limit)`;
+
+  // Initialize map if not exists
+  if (!leafletMap) {
+    leafletMap = L.map('location-map').setView([20, 0], 2); // World view
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 18
+    }).addTo(leafletMap);
+  }
+
+  // Clear existing markers
+  leafletMap.eachLayer(layer => {
+    if (layer instanceof L.Marker) {
+      leafletMap.removeLayer(layer);
+    }
+  });
+
+  let geocoded = 0;
+  let validated = 0;
+
+  for (let i = 0; i < locationEntities.length; i++) {
+    const [locationName, count] = locationEntities[i];
+
+    statusText.textContent = `Geocoding ${i + 1}/${totalLocations}: "${locationName}"...`;
+
+    const result = await geocodeLocation(locationName);
+
+    if (result) {
+      validated++;
+
+      // Add marker
+      const marker = L.marker([result.lat, result.lon]).addTo(leafletMap);
+
+      // Add popup with tab count
+      marker.bindPopup(`
+        <strong>${locationName}</strong><br>
+        ${result.name}<br>
+        <em>${count} tab${count > 1 ? 's' : ''}</em>
+      `);
+
+      geocoded++;
+    }
+
+    // Rate limit: 1 request per second
+    if (i < locationEntities.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  // Fit map to markers
+  if (validated > 0) {
+    const group = L.featureGroup(
+      Object.values(leafletMap._layers).filter(l => l instanceof L.Marker)
+    );
+    leafletMap.fitBounds(group.getBounds().pad(0.1));
+  }
+
+  // Update status
+  statusText.textContent = `✓ Geocoded ${validated} of ${totalLocations} locations (${totalLocations - validated} filtered or not found)`;
+  button.disabled = false;
+  button.textContent = '🔄 Re-geocode Locations';
 }
 
 console.log('[Analysis] UI loaded');

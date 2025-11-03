@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="styles/base.css">
   <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles/layouts.css">
+  <link rel="stylesheet" href="leaflet.css">
 
   <style>
     .analysis-container {
@@ -361,6 +362,9 @@
           <button class="chart-tab" data-tab="domains" style="flex: 1; padding: 15px; border: none; background: none; font-weight: 600; cursor: pointer; transition: all 0.2s; border-bottom: 3px solid transparent;">
             🌐 Domains
           </button>
+          <button class="chart-tab" data-tab="map" style="flex: 1; padding: 15px; border: none; background: none; font-weight: 600; cursor: pointer; transition: all 0.2s; border-bottom: 3px solid transparent;">
+            🗺️ Locations Map
+          </button>
         </div>
 
         <!-- Tab Content Panels -->
@@ -442,6 +446,34 @@
               </div>
             </div>
           </div>
+
+          <!-- Locations Map Tab -->
+          <div id="tab-map" class="chart-tab-content" style="display: none;">
+            <h2 style="margin-bottom: 20px; font-size: 18px;">📍 Locations Map</h2>
+            <div style="background: var(--bg-primary); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <p style="font-size: 14px; color: var(--text-secondary);">
+                    Geocoding locations using OpenStreetMap Nominatim API
+                  </p>
+                </div>
+                <button id="geocode-locations-btn" class="btn btn--primary">
+                  🗺️ Geocode Locations
+                </button>
+              </div>
+
+              <div id="map-status" style="padding: 10px; background: #e3f2fd; border-radius: 4px; margin-bottom: 15px; display: none;">
+                <span id="map-status-text"></span>
+              </div>
+
+              <div id="location-map" style="height: 600px; border-radius: 8px; overflow: hidden;"></div>
+
+              <div style="margin-top: 15px; font-size: 13px; color: var(--text-secondary);">
+                <strong>Note:</strong> Geocoding queries OpenStreetMap's Nominatim API (1 request/second rate limit).
+                Results are cached. Only validates real geographic locations.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -460,6 +492,9 @@
 
   <!-- Chart.js (local) -->
   <script src="chart.umd.js"></script>
+
+  <!-- Leaflet.js (local) -->
+  <script src="leaflet.js"></script>
 
   <script src="analysis.js"></script>
 </body>
