@@ -121,6 +121,14 @@ function setupEventListeners() {
   // Geocode locations button
   document.getElementById('geocode-locations-btn').addEventListener('click', geocodeAndMapLocations);
 
+  // Map popup tab links (event delegation on map container)
+  document.getElementById('location-map').addEventListener('click', (e) => {
+    if (e.target.classList.contains('popup-tab-link')) {
+      const tabId = parseInt(e.target.dataset.tabId);
+      scrollToTab(tabId);
+    }
+  });
+
   // Chart size slider
   document.getElementById('chart-size-slider').addEventListener('input', (e) => {
     chartSize = parseInt(e.target.value);
@@ -986,7 +994,7 @@ function renderCharts() {
 }
 
 /**
- * Geocode a location using Nominatim API
+ * Geocode a location using Nominatim API with full metadata
  */
 async function geocodeLocation(locationName) {
   // Check cache first
@@ -1002,8 +1010,9 @@ async function geocodeLocation(locationName) {
   }
 
   try {
+    // Request with extratags for Wikipedia, wikidata, etc.
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationName)}&limit=1`,
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationName)}&limit=1&extratags=1&addressdetails=1`,
       {
         headers: {
           'User-Agent': 'FiltreInfini/0.1 (Tab Analysis Extension)'
@@ -1020,10 +1029,18 @@ async function geocodeLocation(locationName) {
     const results = await response.json();
 
     if (results && results.length > 0) {
+      const r = results[0];
       const result = {
-        name: results[0].display_name,
-        lat: parseFloat(results[0].lat),
-        lon: parseFloat(results[0].lon)
+        name: r.display_name,
+        lat: parseFloat(r.lat),
+        lon: parseFloat(r.lon),
+        type: r.type,
+        class: r.class,
+        importance: r.importance,
+        wikipedia: r.extratags?.wikipedia || null,
+        wikidata: r.extratags?.wikidata || null,
+        website: r.extratags?.website || null,
+        population: r.extratags?.population || null
       };
       geocodingCache[locationName] = result;
       return result;
@@ -1051,17 +1068,33 @@ async function geocodeAndMapLocations() {
   button.disabled = true;
   button.textContent = '⏳ Geocoding...';
 
-  // Get ALL location entities from all tabs (not just top 20)
-  const locationCounts = {};
+  // Get ALL location entities from all tabs with NER scores and tab references
+  const locationData = {}; // { locationName: { count, avgScore, tabs: [{id, title, score}] } }
+
   allTabs.forEach(tab => {
     if (tab.entities && tab.entities.locations) {
       tab.entities.locations.forEach(loc => {
-        locationCounts[loc.word] = (locationCounts[loc.word] || 0) + 1;
+        if (!locationData[loc.word]) {
+          locationData[loc.word] = { count: 0, totalScore: 0, tabs: [] };
+        }
+        locationData[loc.word].count++;
+        locationData[loc.word].totalScore += loc.score || 0;
+        locationData[loc.word].tabs.push({
+          id: tab.id,
+          title: tab.title,
+          score: loc.score || 0
+        });
       });
     }
   });
 
-  const locationEntities = Object.entries(locationCounts).sort((a, b) => b[1] - a[1]);
+  // Calculate average NER scores
+  Object.keys(locationData).forEach(loc => {
+    locationData[loc].avgScore = locationData[loc].totalScore / locationData[loc].count;
+  });
+
+  const locationEntities = Object.entries(locationData)
+    .sort((a, b) => b[1].count - a[1].count);
   const totalLocations = locationEntities.length;
 
   statusText.textContent = `Geocoding ${totalLocations} locations... (1 req/sec rate limit)`;
@@ -1083,11 +1116,11 @@ async function geocodeAndMapLocations() {
     }
   });
 
-  let geocoded = 0;
   let validated = 0;
+  const validatedLocations = [];
 
   for (let i = 0; i < locationEntities.length; i++) {
-    const [locationName, count] = locationEntities[i];
+    const [locationName, data] = locationEntities[i];
 
     statusText.textContent = `Geocoding ${i + 1}/${totalLocations}: "${locationName}"...`;
 
@@ -1096,17 +1129,72 @@ async function geocodeAndMapLocations() {
     if (result) {
       validated++;
 
-      // Add marker
+      // Store for list rendering
+      validatedLocations.push({
+        name: locationName,
+        geo: result,
+        data: data
+      });
+
+      // Add marker with rich popup
       const marker = L.marker([result.lat, result.lon]).addTo(leafletMap);
 
-      // Add popup with tab count
-      marker.bindPopup(`
-        <strong>${locationName}</strong><br>
-        ${result.name}<br>
-        <em>${count} tab${count > 1 ? 's' : ''}</em>
-      `);
+      // Create clickable tab list for popup
+      const tabLinks = data.tabs.slice(0, 5).map(tab =>
+        `<div style="cursor: pointer; color: #1976d2; text-decoration: underline; font-size: 11px; margin: 2px 0;"
+              data-tab-id="${tab.id}"
+              class="popup-tab-link"
+              title="${escapeHtml(tab.title)}">
+          ${escapeHtml(tab.title.substring(0, 40))}${tab.title.length > 40 ? '...' : ''}
+        </div>`
+      ).join('');
 
-      geocoded++;
+      const moreText = data.tabs.length > 5 ?
+        `<div style="font-size: 11px; color: #666; margin-top: 4px;">+ ${data.tabs.length - 5} more</div>` : '';
+
+      // Rich popup content
+      const popupContent = `
+        <div style="max-width: 250px;">
+          <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${locationName}</div>
+          <div style="font-size: 11px; color: #666; margin-bottom: 8px;">${result.name}</div>
+
+          ${result.type || result.class ? `
+            <div style="font-size: 11px; margin-bottom: 4px;">
+              <strong>Type:</strong> ${result.class || ''}${result.type ? ` / ${result.type}` : ''}
+            </div>
+          ` : ''}
+
+          ${result.importance ? `
+            <div style="font-size: 11px; margin-bottom: 4px;">
+              <strong>Importance:</strong> ${(result.importance * 100).toFixed(1)}%
+            </div>
+          ` : ''}
+
+          ${result.population ? `
+            <div style="font-size: 11px; margin-bottom: 4px;">
+              <strong>Population:</strong> ${parseInt(result.population).toLocaleString()}
+            </div>
+          ` : ''}
+
+          ${result.wikipedia ? `
+            <div style="font-size: 11px; margin-bottom: 4px;">
+              <a href="https://${result.wikipedia.split(':')[0]}.wikipedia.org/wiki/${result.wikipedia.split(':')[1]}"
+                 target="_blank" style="color: #1976d2;">📖 Wikipedia</a>
+            </div>
+          ` : ''}
+
+          <div style="border-top: 1px solid #ddd; margin: 8px 0 4px 0; padding-top: 4px;">
+            <div style="font-size: 12px; font-weight: 600; margin-bottom: 4px;">
+              ${data.count} tab${data.count > 1 ? 's' : ''}
+              <span style="color: #666;">(NER: ${(data.avgScore * 100).toFixed(0)}%)</span>
+            </div>
+            ${tabLinks}
+            ${moreText}
+          </div>
+        </div>
+      `;
+
+      marker.bindPopup(popupContent);
     }
 
     // Rate limit: 1 request per second
@@ -1123,6 +1211,9 @@ async function geocodeAndMapLocations() {
     leafletMap.fitBounds(group.getBounds().pad(0.1));
   }
 
+  // Render location list
+  renderLocationList(validatedLocations);
+
   // Update status
   statusText.textContent = `✓ Geocoded ${validated} of ${totalLocations} locations (${totalLocations - validated} filtered or not found)`;
   button.disabled = false;
@@ -1135,6 +1226,180 @@ async function geocodeAndMapLocations() {
     localStorage.setItem(cacheKey, JSON.stringify(geocodingCache));
     console.log(`[Analysis] Saved ${Object.keys(geocodingCache).length} geocoding results to localStorage`);
   }
+}
+
+/**
+ * Render exhaustive location list below map
+ */
+function renderLocationList(locations) {
+  const container = document.getElementById('location-list-container');
+  const list = document.getElementById('location-list');
+
+  if (locations.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'block';
+
+  const html = locations.map(loc => {
+    const { name, geo, data } = loc;
+
+    // Tab titles for hover tooltip
+    const tabTitles = data.tabs.map(t => t.title).join('\n• ');
+
+    return `
+      <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">${escapeHtml(name)}</div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(geo.name)}</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 12px; color: var(--primary-color); font-weight: 600; cursor: pointer; text-decoration: underline;"
+                 data-location="${escapeHtml(name)}"
+                 class="location-tab-count"
+                 title="${escapeHtml(tabTitles)}">
+              ${data.count} tab${data.count > 1 ? 's' : ''}
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+              NER: ${(data.avgScore * 100).toFixed(0)}%
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--text-secondary);">
+          ${geo.type || geo.class ? `
+            <span style="background: var(--bg-secondary); padding: 3px 8px; border-radius: 4px;">
+              <strong>Type:</strong> ${escapeHtml(geo.class || '')}${geo.type ? ` / ${escapeHtml(geo.type)}` : ''}
+            </span>
+          ` : ''}
+
+          ${geo.importance ? `
+            <span style="background: var(--bg-secondary); padding: 3px 8px; border-radius: 4px;">
+              <strong>Importance:</strong> ${(geo.importance * 100).toFixed(1)}%
+            </span>
+          ` : ''}
+
+          ${geo.population ? `
+            <span style="background: var(--bg-secondary); padding: 3px 8px; border-radius: 4px;">
+              <strong>Pop:</strong> ${parseInt(geo.population).toLocaleString()}
+            </span>
+          ` : ''}
+
+          ${geo.wikipedia ? `
+            <a href="https://${geo.wikipedia.split(':')[0]}.wikipedia.org/wiki/${geo.wikipedia.split(':')[1]}"
+               target="_blank"
+               style="background: var(--bg-secondary); padding: 3px 8px; border-radius: 4px; color: var(--primary-color); text-decoration: none;">
+              📖 Wikipedia
+            </a>
+          ` : ''}
+
+          ${geo.website ? `
+            <a href="${escapeHtml(geo.website)}"
+               target="_blank"
+               style="background: var(--bg-secondary); padding: 3px 8px; border-radius: 4px; color: var(--primary-color); text-decoration: none;">
+              🌐 Website
+            </a>
+          ` : ''}
+
+          <span style="background: var(--bg-secondary); padding: 3px 8px; border-radius: 4px;">
+            📍 ${geo.lat.toFixed(4)}, ${geo.lon.toFixed(4)}
+          </span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.innerHTML = html;
+
+  // Add click handlers for tab counts
+  document.querySelectorAll('.location-tab-count').forEach(el => {
+    el.addEventListener('click', (e) => {
+      const locationName = e.target.dataset.location;
+      filterByLocation(locationName);
+    });
+  });
+}
+
+/**
+ * Filter tabs by location entity
+ */
+function filterByLocation(locationName) {
+  // Clear search and other filters
+  document.getElementById('search-input').value = '';
+  document.querySelectorAll('.filter-pill').forEach(pill => pill.classList.remove('active'));
+
+  // Clear similar mode
+  if (similarToTab) {
+    similarToTab = null;
+    document.getElementById('similar-banner').style.display = 'none';
+  }
+
+  // Apply location filter (custom filter)
+  filteredTabs = allTabs.filter(tab => {
+    if (!tab.entities || !tab.entities.locations) return false;
+    return tab.entities.locations.some(loc => loc.word === locationName);
+  });
+
+  // Show feedback
+  const banner = document.getElementById('similar-banner');
+  banner.style.display = 'flex';
+  banner.style.background = 'linear-gradient(135deg, #43a047 0%, #66bb6a 100%)';
+  document.getElementById('similar-banner-content').innerHTML = `
+    <div style="font-size: 16px; font-weight: 600;">
+      Showing ${filteredTabs.length} tabs with location: <span style="background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 4px;">${escapeHtml(locationName)}</span>
+    </div>
+  `;
+  document.getElementById('similarity-threshold').parentElement.style.display = 'none';
+  document.getElementById('clear-similar-btn').style.display = 'block';
+
+  currentPage = 1;
+  renderTabs();
+
+  // Scroll to top of tabs list
+  document.getElementById('tabs-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/**
+ * Scroll to and highlight a specific tab in the list
+ */
+function scrollToTab(tabId) {
+  // Find tab index in filteredTabs
+  const tabIndex = filteredTabs.findIndex(t => t.id === tabId);
+
+  if (tabIndex === -1) {
+    // Tab not in current filtered view, show it by clearing filters
+    clearFilters();
+    // Wait for render, then try again
+    setTimeout(() => scrollToTab(tabId), 100);
+    return;
+  }
+
+  // Calculate page
+  const targetPage = Math.floor(tabIndex / TABS_PER_PAGE) + 1;
+
+  if (targetPage !== currentPage) {
+    currentPage = targetPage;
+    renderPage();
+  }
+
+  // Scroll to tabs list first
+  setTimeout(() => {
+    const tabEl = document.querySelector(`[data-tab-id="${tabId}"]`);
+    if (tabEl) {
+      // Highlight briefly
+      const originalBg = tabEl.style.background;
+      tabEl.style.background = 'linear-gradient(135deg, #fff9c4 0%, #ffeb3b 100%)';
+      tabEl.style.transition = 'background 2s';
+
+      tabEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      setTimeout(() => {
+        tabEl.style.background = originalBg;
+      }, 2000);
+    }
+  }, 100);
 }
 
 console.log('[Analysis] UI loaded');
