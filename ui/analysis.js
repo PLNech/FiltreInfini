@@ -551,12 +551,30 @@ function renderPage() {
  * Render a single tab card
  */
 function renderTabCard(tab) {
-  const { classification, entities, searchQuery } = tab;
+  const { classification, entities, searchQuery, lastUsed } = tab;
+
+  // Compute age badge
+  const ageDays = Math.floor((Date.now() - (lastUsed * 1000)) / (1000 * 60 * 60 * 24));
+  let ageBadge = '';
+  if (ageDays > 365) {
+    ageBadge = `<span class="badge" style="background: #EF4444; color: white;">📅 ${Math.floor(ageDays / 365)}y old</span>`;
+  } else if (ageDays > 180) {
+    ageBadge = `<span class="badge" style="background: #F59E0B; color: white;">📅 ${Math.floor(ageDays / 30)}mo old</span>`;
+  } else if (ageDays > 30) {
+    ageBadge = `<span class="badge" style="background: #FBBF24; color: #1A1A1A;">📅 ${Math.floor(ageDays / 30)}mo old</span>`;
+  }
+
+  // Compute estimated reading time (very rough heuristic)
+  const titleWords = tab.title.split(/\s+/).length;
+  const estReadingMin = Math.max(1, Math.floor(titleWords / 200 * 10)); // Assume title hints at content length
+  const readingBadge = `<span class="badge" style="background: #10B981; color: white;">📖 ~${estReadingMin}min</span>`;
 
   const badges = classification ? `
     <span class="badge badge-intent">${classification.intent.label}</span>
     <span class="badge badge-status">${classification.status.label}</span>
     <span class="badge badge-type">${classification.contentType.label}</span>
+    ${ageBadge}
+    ${readingBadge}
   ` : '';
 
   // Search query display
