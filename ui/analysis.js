@@ -1018,7 +1018,6 @@ async function geocodeLocation(locationName) {
  * Geocode and map all locations
  */
 async function geocodeAndMapLocations() {
-  const { statistics } = analysisData;
   const statusEl = document.getElementById('map-status');
   const statusText = document.getElementById('map-status-text');
   const button = document.getElementById('geocode-locations-btn');
@@ -1028,8 +1027,17 @@ async function geocodeAndMapLocations() {
   button.disabled = true;
   button.textContent = '⏳ Geocoding...';
 
-  // Get all location entities
-  const locationEntities = Object.entries(statistics.topEntities.locations);
+  // Get ALL location entities from all tabs (not just top 20)
+  const locationCounts = {};
+  allTabs.forEach(tab => {
+    if (tab.entities && tab.entities.locations) {
+      tab.entities.locations.forEach(loc => {
+        locationCounts[loc.word] = (locationCounts[loc.word] || 0) + 1;
+      });
+    }
+  });
+
+  const locationEntities = Object.entries(locationCounts).sort((a, b) => b[1] - a[1]);
   const totalLocations = locationEntities.length;
 
   statusText.textContent = `Geocoding ${totalLocations} locations... (1 req/sec rate limit)`;
