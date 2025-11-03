@@ -861,6 +861,7 @@ function renderChartsForTab(tabName) {
   } else if (tabName === 'entities') {
     // Top People (use chartSize)
     const topPeople = Object.entries(statistics.topEntities.people).slice(0, chartSize);
+    document.getElementById('people-chart-title').textContent = `👤 Top ${topPeople.length} People`;
     chartInstances[tabName].push(new Chart(document.getElementById('people-chart'), {
       type: 'bar',
       data: {
@@ -900,6 +901,7 @@ function renderChartsForTab(tabName) {
 
     // Top Organizations (use chartSize)
     const topOrgs = Object.entries(statistics.topEntities.organizations).slice(0, chartSize);
+    document.getElementById('orgs-chart-title').textContent = `🏢 Top ${topOrgs.length} Organizations`;
     chartInstances[tabName].push(new Chart(document.getElementById('orgs-chart'), {
       type: 'bar',
       data: {
@@ -939,6 +941,7 @@ function renderChartsForTab(tabName) {
 
     // Top Locations (use chartSize)
     const topLocs = Object.entries(statistics.topEntities.locations).slice(0, chartSize);
+    document.getElementById('locations-chart-title').textContent = `📍 Top ${topLocs.length} Locations`;
     chartInstances[tabName].push(new Chart(document.getElementById('locations-chart'), {
       type: 'bar',
       data: {
