@@ -207,7 +207,7 @@ async function fetchReadingTime(url) {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; FiltreInfini/1.0; +https://github.com/PLNech/FiltreInfini)'
       },
-      signal: AbortSignal.timeout(10000) // 10s timeout
+      signal: AbortSignal.timeout(5000) // 5s timeout (faster failures)
     });
 
     if (!response.ok) {
@@ -503,21 +503,35 @@ async function main() {
     const results = [];
     const startAnalysis = Date.now();
 
+    let readingTimeSuccesses = 0;
+    let readingTimeFailures = 0;
+
     for (let batchStart = 0; batchStart < sample.length; batchStart += BATCH_SIZE) {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, sample.length);
       const batch = sample.slice(batchStart, batchEnd);
 
-      process.stdout.write(`\r   Progress: ${batchStart}/${sample.length}`);
+      process.stdout.write(`\r   Progress: ${batchEnd}/${sample.length} (reading time: ${readingTimeSuccesses}✓ ${readingTimeFailures}✗)`);
+
+      const batchStartTime = Date.now();
 
       // Process batch in parallel
       const batchResults = await Promise.all(
-        batch.map(async (tab) => {
+        batch.map(async (tab, idx) => {
           const [classification, entities, embedding, readingTimeMinutes] = await Promise.all([
             classifyTab(tab, classifier),
             extractEntities(tab, ner),
             computeEmbedding(tab, embedder),
-            fetchReadingTime(tab.url)
+            fetchReadingTime(tab.url).catch(err => {
+              // Silently catch errors, just return null
+              return null;
+            })
           ]);
+
+          if (readingTimeMinutes) {
+            readingTimeSuccesses++;
+          } else {
+            readingTimeFailures++;
+          }
 
           // Extract search query if applicable
           const searchQuery = extractSearchQuery(tab.url);
@@ -535,13 +549,19 @@ async function main() {
       );
 
       results.push(...batchResults);
+
+      const batchTime = Date.now() - batchStartTime;
+      if (batchTime > 60000) {
+        console.log(`\n   ⚠️  Batch took ${(batchTime / 1000).toFixed(1)}s (slow network?)`);
+      }
     }
 
-    console.log(`\r   Progress: ${sample.length}/${sample.length}`);
+    console.log(`\r   Progress: ${sample.length}/${sample.length} (reading time: ${readingTimeSuccesses}✓ ${readingTimeFailures}✗)`);
 
     const analysisTime = Date.now() - startAnalysis;
     console.log(`\n✓ Analysis complete in ${(analysisTime / 1000).toFixed(1)}s`);
-    console.log(`  Average: ${Math.round(analysisTime / results.length)}ms per tab\n`);
+    console.log(`  Average: ${Math.round(analysisTime / results.length)}ms per tab`);
+    console.log(`  Reading time: ${readingTimeSuccesses} successful, ${readingTimeFailures} failed (${((readingTimeSuccesses / results.length) * 100).toFixed(1)}% success rate)\n`);
 
     // Find similar tabs
     findSimilarTabs(results);
