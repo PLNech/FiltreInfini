@@ -8,9 +8,6 @@
   <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles/layouts.css">
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
-
   <style>
     .analysis-container {
       max-width: 1400px;
@@ -271,6 +268,61 @@
       <!-- Populated by JS -->
     </div>
 
+    <!-- Charts Section -->
+    <div id="charts-section" style="display: none; margin-bottom: 30px;">
+      <h2 style="margin-bottom: 20px;">📊 Visual Analytics</h2>
+
+      <!-- Classification Charts Row -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px;">
+        <div style="background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">Intent Distribution</h3>
+          <canvas id="intent-chart"></canvas>
+        </div>
+        <div style="background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">Status Distribution</h3>
+          <canvas id="status-chart"></canvas>
+        </div>
+        <div style="background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">Content Type</h3>
+          <canvas id="content-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Domains and Entities Row -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+        <div style="background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">Top 15 Domains</h3>
+          <canvas id="domains-chart"></canvas>
+        </div>
+        <div style="background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">Entity Types Distribution</h3>
+          <canvas id="entities-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Entities Details Row -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px;">
+        <div style="background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">👤 Top People</h3>
+          <canvas id="people-chart"></canvas>
+        </div>
+        <div style="background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">🏢 Top Organizations</h3>
+          <canvas id="orgs-chart"></canvas>
+        </div>
+        <div style="background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
+          <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">📍 Top Locations</h3>
+          <canvas id="locations-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Search Queries Bubble Chart (if present) -->
+      <div id="search-chart-container" style="display: none; background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+        <h3 style="margin-bottom: 15px; font-size: 14px; text-transform: uppercase; color: var(--text-secondary);">🔍 Search Query Domains</h3>
+        <canvas id="search-chart"></canvas>
+      </div>
+    </div>
+
     <!-- Filters -->
     <div class="filters-section">
       <h3 style="margin-bottom: 15px;">🔍 Filters</h3>
@@ -319,6 +371,21 @@
       </div>
     </div>
 
+    <!-- Similar Tabs Banner -->
+    <div id="similar-banner" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+      <div id="similar-banner-content" style="flex: 1;">
+        <!-- Populated by JS -->
+      </div>
+      <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+          <label style="font-size: 13px; white-space: nowrap; font-weight: 600;">Similarity Threshold:</label>
+          <input type="range" id="similarity-threshold" min="0.5" max="0.95" step="0.05" value="0.7" style="flex: 1; min-width: 150px;">
+          <span id="threshold-value" style="font-size: 14px; font-weight: 600; min-width: 40px;">0.70</span>
+        </div>
+        <button id="clear-similar-btn" class="btn" style="background: white; color: #667eea; border: none; padding: 8px 16px; font-weight: 600;">✕ Clear Filter</button>
+      </div>
+    </div>
+
     <!-- Tabs List -->
     <div id="tabs-container">
       <div class="loading">Loading analysis data...</div>
@@ -331,6 +398,9 @@
       <button class="page-btn" id="next-page">Next →</button>
     </div>
   </div>
+
+  <!-- Chart.js (local) -->
+  <script src="chart.umd.js"></script>
 
   <script src="analysis.js"></script>
 </body>
