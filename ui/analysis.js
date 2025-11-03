@@ -39,7 +39,7 @@ let leafletMap = null;
 let geocodingCache = {};
 
 // Chart configuration
-let chartSize = 10; // Default top 10
+let chartSize = 100; // Default top 100
 
 // Theme state
 let currentTheme = localStorage.getItem('theme') || 'light';
