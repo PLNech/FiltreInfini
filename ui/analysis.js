@@ -13,7 +13,8 @@ const filters = {
   intent: new Set(),
   status: new Set(),
   contentType: new Set(),
-  domain: new Set()
+  domain: new Set(),
+  readingTime: { min: 0, max: 60 }
 };
 
 // Similar tabs state
@@ -148,6 +149,20 @@ function setupEventListeners() {
     if (analysisData && currentChartTab) {
       renderChartsForTab(currentChartTab);
     }
+  });
+
+  // Reading time sliders
+  document.getElementById('reading-time-min').addEventListener('input', (e) => {
+    filters.readingTime.min = parseInt(e.target.value);
+    document.getElementById('reading-time-min-value').textContent = filters.readingTime.min;
+    applyFilters();
+  });
+
+  document.getElementById('reading-time-max').addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    filters.readingTime.max = val;
+    document.getElementById('reading-time-max-value').textContent = val === 60 ? '60+' : val;
+    applyFilters();
   });
 }
 
@@ -383,6 +398,14 @@ function renderFilters() {
 }
 
 /**
+ * Get reading time for a tab (in minutes)
+ * Uses pre-computed value from analysis (fetched from actual page content)
+ */
+function getReadingTime(tab) {
+  return tab.readingTimeMinutes || null;
+}
+
+/**
  * Apply all active filters
  */
 function applyFilters() {
@@ -440,6 +463,14 @@ function applyFilters() {
       }
     }
 
+    // Reading time filter (only filter if we have data)
+    const readingTime = getReadingTime(tab);
+    if (readingTime !== null) {
+      if (readingTime < filters.readingTime.min || readingTime > filters.readingTime.max) {
+        return false;
+      }
+    }
+
     return true;
   });
 
@@ -466,11 +497,19 @@ function clearFilters() {
   filters.status.clear();
   filters.contentType.clear();
   filters.domain.clear();
+  filters.readingTime.min = 0;
+  filters.readingTime.max = 60;
 
   document.getElementById('search-input').value = '';
   document.querySelectorAll('.filter-pill').forEach(pill => {
     pill.classList.remove('active');
   });
+
+  // Reset reading time sliders
+  document.getElementById('reading-time-min').value = 0;
+  document.getElementById('reading-time-max').value = 60;
+  document.getElementById('reading-time-min-value').textContent = '0';
+  document.getElementById('reading-time-max-value').textContent = '60+';
 
   clearSimilarFilter();
   applyFilters();
@@ -574,10 +613,11 @@ function renderTabCard(tab) {
     ageBadge = `<span class="badge" style="background: #FBBF24; color: #1A1A1A;">📅 ${Math.floor(ageDays / 30)}mo old</span>`;
   }
 
-  // Compute estimated reading time (very rough heuristic)
-  const titleWords = tab.title.split(/\s+/).length;
-  const estReadingMin = Math.max(1, Math.floor(titleWords / 200 * 10)); // Assume title hints at content length
-  const readingBadge = `<span class="badge" style="background: #10B981; color: white;">📖 ~${estReadingMin}min</span>`;
+  // Use actual reading time from page content analysis
+  const readingTime = getReadingTime(tab);
+  const readingBadge = readingTime
+    ? `<span class="badge" style="background: #10B981; color: white;">📖 ${readingTime}min</span>`
+    : '';
 
   const badges = classification ? `
     <span class="badge badge-intent">${classification.intent.label}</span>
@@ -1054,6 +1094,64 @@ function renderCharts() {
 
   // Render initial tab (overview)
   renderChartsForTab('overview');
+
+  // Render reading time histogram
+  renderReadingTimeHistogram();
+}
+
+/**
+ * Render reading time histogram
+ */
+function renderReadingTimeHistogram() {
+  const canvas = document.getElementById('reading-time-histogram');
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+
+  // Collect reading times from all tabs
+  const readingTimes = allTabs
+    .map(tab => getReadingTime(tab))
+    .filter(time => time !== null);
+
+  if (readingTimes.length === 0) {
+    return; // No data, don't render
+  }
+
+  // Create histogram buckets (0-60 min, 5min buckets)
+  const buckets = Array(12).fill(0); // 0-5, 5-10, ..., 55-60
+  readingTimes.forEach(time => {
+    const bucketIndex = Math.min(Math.floor(time / 5), 11);
+    buckets[bucketIndex]++;
+  });
+
+  // Simple bar chart rendering with Canvas API
+  const width = canvas.width = canvas.offsetWidth * 2; // 2x for hi-dpi
+  const height = canvas.height = 160; // 2x for hi-dpi
+  canvas.style.width = `${canvas.offsetWidth}px`;
+  canvas.style.height = '80px';
+
+  const barWidth = width / buckets.length;
+  const maxCount = Math.max(...buckets);
+
+  // Get color from CSS variable
+  const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
+
+  buckets.forEach((count, i) => {
+    const barHeight = maxCount > 0 ? (count / maxCount) * (height - 20) : 0;
+    const x = i * barWidth;
+    const y = height - barHeight;
+
+    ctx.fillStyle = primaryColor;
+    ctx.fillRect(x + 2, y, barWidth - 4, barHeight);
+
+    // Labels at bottom
+    if (i % 2 === 0) { // Every other label to avoid crowding
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${i * 5}`, x + barWidth / 2, height - 5);
+    }
+  });
 }
 
 /**

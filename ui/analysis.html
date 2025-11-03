@@ -324,6 +324,19 @@
         </div>
       </div>
 
+      <div class="filter-group">
+        <label class="filter-label">Reading Time</label>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+          <input type="range" id="reading-time-min" min="0" max="60" step="1" value="0" style="flex: 1;">
+          <span style="min-width: 40px; font-size: 12px; color: var(--text-secondary);" id="reading-time-min-value">0</span>
+          <span style="color: var(--text-secondary);">-</span>
+          <input type="range" id="reading-time-max" min="0" max="60" step="1" value="60" style="flex: 1;">
+          <span style="min-width: 40px; font-size: 12px; color: var(--text-secondary);" id="reading-time-max-value">60+</span>
+          <span style="font-size: 12px; color: var(--text-secondary);">min</span>
+        </div>
+        <canvas id="reading-time-histogram" style="width: 100%; height: 80px; margin-top: 10px;"></canvas>
+      </div>
+
       <div style="margin-top: 15px;">
         <button class="btn" id="clear-filters-btn">Clear All Filters</button>
         <span id="results-count" style="margin-left: 15px; color: var(--text-secondary);"></span>

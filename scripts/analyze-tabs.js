@@ -192,6 +192,49 @@ function extractFeatures(tab) {
 }
 
 /**
+ * Fetch page content and calculate reading time
+ * @param {string} url - Tab URL
+ * @returns {Promise<number>} Reading time in minutes (or null on error)
+ */
+async function fetchReadingTime(url) {
+  try {
+    // Skip non-http URLs
+    if (!url.startsWith('http')) {
+      return null;
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; FiltreInfini/1.0; +https://github.com/PLNech/FiltreInfini)'
+      },
+      signal: AbortSignal.timeout(10000) // 10s timeout
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+
+    // Strip HTML tags and extract text content
+    const textContent = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+      .replace(/<[^>]+>/g, ' ') // Remove all tags
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+
+    const wordCount = textContent.split(/\s+/).length;
+    const readingTimeMinutes = Math.max(1, Math.round(wordCount / 200)); // 200 words per minute
+
+    return readingTimeMinutes;
+  } catch (error) {
+    // Timeout, network error, etc.
+    return null;
+  }
+}
+
+/**
  * Classify tab using zero-shot classification
  */
 async function classifyTab(tab, classifier) {
@@ -469,10 +512,11 @@ async function main() {
       // Process batch in parallel
       const batchResults = await Promise.all(
         batch.map(async (tab) => {
-          const [classification, entities, embedding] = await Promise.all([
+          const [classification, entities, embedding, readingTimeMinutes] = await Promise.all([
             classifyTab(tab, classifier),
             extractEntities(tab, ner),
-            computeEmbedding(tab, embedder)
+            computeEmbedding(tab, embedder),
+            fetchReadingTime(tab.url)
           ]);
 
           // Extract search query if applicable
@@ -483,6 +527,7 @@ async function main() {
             classification,
             entities,
             embedding,
+            readingTimeMinutes: readingTimeMinutes || undefined, // Only include if successfully fetched
             searchQuery: searchQuery || undefined, // Only include if exists
             analyzedAt: Date.now()
           };
@@ -537,25 +582,21 @@ async function main() {
       }
     }
 
-    // Sort and limit top items
+    // Sort items (keep all, let UI control display limit)
     stats.topDomains = Object.entries(stats.topDomains)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
       .reduce((obj, [k, v]) => ({ ...obj, [k]: v }), {});
 
     stats.topEntities.people = Object.entries(stats.topEntities.people)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
       .reduce((obj, [k, v]) => ({ ...obj, [k]: v }), {});
 
     stats.topEntities.organizations = Object.entries(stats.topEntities.organizations)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
       .reduce((obj, [k, v]) => ({ ...obj, [k]: v }), {});
 
     stats.topEntities.locations = Object.entries(stats.topEntities.locations)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
       .reduce((obj, [k, v]) => ({ ...obj, [k]: v }), {});
 
     // Save results
