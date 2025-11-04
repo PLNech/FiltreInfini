@@ -1,7 +1,9 @@
-# Domain Ontology - 100k Categorized Domains
+# Domain Ontology - 1M+ Categorized Domains
 
 ## Overview
-The extension fetches a categorized list of 100k+ domains from GitHub releases to provide rich insights into browsing habits. Categories include: gaming, adult, productivity, learning, entertainment, finance, health, sports, travel, and more.
+The extension fetches a categorized list of 1M+ domains from GitHub releases to provide rich insights into browsing habits. Built from professional sources including DMOZ (1.5M human-curated domains), Tranco Top 1M, FortiGuard taxonomy (95 categories), and IAB Content Taxonomy (350+ categories).
+
+Categories include: gaming, adult, productivity, learning, entertainment, finance, health, sports, travel, business, arts, shopping, science, reference, and more.
 
 ## Architecture
 - **Fetch once**: Extension downloads JSON from GitHub releases on first run
@@ -10,14 +12,15 @@ The extension fetches a categorized list of 100k+ domains from GitHub releases t
 - **Auto-update**: Checks for new version weekly
 
 ## Hosting
-File hosted at: `https://github.com/PLNech/FiltreInfini/releases/latest/download/domains-100k.json`
+File hosted at: `https://github.com/PLNech/FiltreInfini/releases/latest/download/domains-1m.json`
 
 ## JSON Format
 ```json
 {
   "version": "2025.01.04",
   "updated": "2025-01-04T00:00:00Z",
-  "count": 100000,
+  "count": 1001938,
+  "sources": ["DMOZ", "Tranco", "UT1", "Moz", "Manual"],
   "categories": {
     "steam.com": "gaming",
     "github.com": "tech",
@@ -29,28 +32,34 @@ File hosted at: `https://github.com/PLNech/FiltreInfini/releases/latest/download
     "webmd.com": "health",
     "espn.com": "sports",
     "booking.com": "travel",
-    ...100k more
+    ...1M+ more
   }
 }
 ```
 
-## Categories
-- **gaming**: Steam, Epic Games, Twitch, IGN, Roblox
-- **adult**: Adult content sites
-- **productivity**: Notion, Trello, Asana, Slack
-- **learning**: Coursera, Udemy, Khan Academy
-- **entertainment**: Netflix, Spotify, Hulu
-- **finance**: PayPal, banking, crypto
-- **health**: WebMD, health clinics
-- **sports**: ESPN, NFL, NBA
-- **travel**: Booking.com, Airbnb
-- **tech**: GitHub, Stack Overflow (already detected by patterns)
-- **blog**: Medium, Substack (already detected by patterns)
-- **social**: Twitter, Reddit (already detected by patterns)
-- **shopping**: Amazon, eBay
-- **news**: CNN, BBC, NYT
-- **video**: YouTube (already detected)
-- **other**: Everything else
+## Categories (22 active)
+- **business** (223k): Corporate sites, B2B services, professional services
+- **blog** (130k): Medium, Substack, personal blogs
+- **arts** (116k): Museums, galleries, creative arts, design
+- **shopping** (89k): Amazon, eBay, e-commerce
+- **tech** (83k): GitHub, Stack Overflow, developer tools
+- **entertainment** (78k): Netflix, Spotify, Hulu, streaming
+- **sports** (57k): ESPN, NFL, NBA, sports news
+- **science** (41k): Research, academia, scientific publications
+- **health** (39k): WebMD, health clinics, medical info
+- **reference** (29k): Wikipedia, dictionaries, encyclopedias
+- **gaming** (27k): Steam, Epic Games, Twitch, IGN, Roblox
+- **adult** (27k): Adult content sites (comprehensive coverage)
+- **news** (24k): CNN, BBC, NYT, journalism
+- **social** (915): Twitter, Reddit, Facebook, Instagram
+- **family** (168): Family-friendly content, parenting
+- **home** (48): Home improvement, real estate
+- **learning** (30): Coursera, Udemy, Khan Academy, MOOCs
+- **travel** (20): Booking.com, Airbnb, travel planning
+- **video** (16): YouTube, Vimeo, video hosting
+- **productivity** (5): Notion, Trello, Asana, Slack
+- **finance** (4): PayPal, banking, crypto
+- **other**: Everything else not categorized
 
 ## Generating the Dataset
 
