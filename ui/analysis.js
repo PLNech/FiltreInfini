@@ -8,13 +8,17 @@ let filteredTabs = [];
 let currentPage = 1;
 const TABS_PER_PAGE = 50;
 
+// Content search results (from IndexedDB)
+let contentSearchResults = null;
+
 const filters = {
   search: '',
   intent: new Set(),
   status: new Set(),
   contentType: new Set(),
   domain: new Set(),
-  readingTime: { min: 0, max: 60 }
+  readingTime: { min: 0, max: 60 },
+  age: { min: 0, max: 730 } // 0 to 2 years in days
 };
 
 // Similar tabs state
@@ -43,6 +47,10 @@ let chartSize = 100; // Default top 100
 
 // Theme state
 let currentTheme = localStorage.getItem('theme') || 'light';
+
+// Histogram animation state
+let histogramPreviousBuckets = null;
+let histogramAnimationFrame = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -78,10 +86,18 @@ function setupEventListeners() {
     }
   });
 
-  // Reload last file button
+  // Reload last file button - just opens file picker with hint
   document.getElementById('reload-last-btn').addEventListener('click', () => {
     if (lastLoadedFile) {
+      // If file is in current session, reload it directly
       loadAnalysisFromFile(lastLoadedFile);
+    } else {
+      // Otherwise, prompt user to select the file again
+      const lastFilename = localStorage.getItem('lastAnalysisFilename');
+      if (lastFilename) {
+        alert(`Please select the analysis file again:\n\n${lastFilename}\n\nUsually found in: data/`);
+      }
+      document.getElementById('file-input').click();
     }
   });
 
@@ -155,6 +171,7 @@ function setupEventListeners() {
   document.getElementById('reading-time-min').addEventListener('input', (e) => {
     filters.readingTime.min = parseInt(e.target.value);
     document.getElementById('reading-time-min-value').textContent = filters.readingTime.min;
+    console.log(`[Filter] Reading time min: ${filters.readingTime.min}`);
     applyFilters();
   });
 
@@ -162,8 +179,76 @@ function setupEventListeners() {
     const val = parseInt(e.target.value);
     filters.readingTime.max = val;
     document.getElementById('reading-time-max-value').textContent = val === 60 ? '60+' : val;
+    console.log(`[Filter] Reading time max: ${filters.readingTime.max}`);
     applyFilters();
   });
+
+  // Age sliders
+  document.getElementById('age-min').addEventListener('input', (e) => {
+    filters.age.min = parseInt(e.target.value);
+    document.getElementById('age-min-value').textContent = formatAgeDays(filters.age.min);
+    console.log(`[Filter] Age min: ${filters.age.min} days`);
+    applyFilters();
+  });
+
+  document.getElementById('age-max').addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    filters.age.max = val;
+    document.getElementById('age-max-value').textContent = val === 730 ? '2y+' : formatAgeDays(val);
+    console.log(`[Filter] Age max: ${filters.age.max} days`);
+    applyFilters();
+  });
+
+  // Content search (full-text)
+  const contentSearchInput = document.getElementById('content-search-input');
+  if (contentSearchInput) {
+    let contentSearchTimeout;
+    contentSearchInput.addEventListener('input', (e) => {
+      clearTimeout(contentSearchTimeout);
+      const query = e.target.value.trim();
+
+      if (query.length < 3) {
+        // Clear content search if query too short
+        contentSearchResults = null;
+        document.getElementById('content-search-status').textContent = '';
+        applyFilters();
+        return;
+      }
+
+      // Debounce search (wait 500ms after typing stops)
+      contentSearchTimeout = setTimeout(async () => {
+        await searchContent(query);
+      }, 500);
+    });
+  }
+
+  // Import to IndexedDB button
+  const importBtn = document.getElementById('import-to-idb-btn');
+  if (importBtn) {
+    importBtn.addEventListener('click', importAnalysisToIndexedDB);
+  }
+
+  // Clear cache button
+  const clearCacheBtn = document.getElementById('clear-cache-btn');
+  if (clearCacheBtn) {
+    clearCacheBtn.addEventListener('click', async () => {
+      if (confirm('Clear all IndexedDB cache? This will remove all imported data for content search.')) {
+        await indexedDBStorage.clearAll();
+        await updateIndexedDBStatus();
+        alert('Cache cleared successfully');
+      }
+    });
+  }
+}
+
+/**
+ * Format age in days to human-readable string
+ */
+function formatAgeDays(days) {
+  if (days === 0) return '0d';
+  if (days < 30) return `${days}d`;
+  if (days < 365) return `${Math.floor(days / 30)}mo`;
+  return `${Math.floor(days / 365)}y`;
 }
 
 /**
@@ -196,6 +281,34 @@ async function loadAnalysisFromFile(file) {
     allTabs = analysisData.tabs;
     filteredTabs = [...allTabs];
 
+    // Reset reading time sliders to default values (prevent browser form cache)
+    filters.readingTime.min = 0;
+    filters.readingTime.max = 60;
+    const minSlider = document.getElementById('reading-time-min');
+    const maxSlider = document.getElementById('reading-time-max');
+    const minValue = document.getElementById('reading-time-min-value');
+    const maxValue = document.getElementById('reading-time-max-value');
+    if (minSlider) minSlider.value = '0';
+    if (maxSlider) maxSlider.value = '60';
+    if (minValue) minValue.textContent = '0';
+    if (maxValue) maxValue.textContent = '60+';
+
+    // Reset age sliders to default values
+    filters.age.min = 0;
+    filters.age.max = 730;
+    const ageMinSlider = document.getElementById('age-min');
+    const ageMaxSlider = document.getElementById('age-max');
+    const ageMinValue = document.getElementById('age-min-value');
+    const ageMaxValue = document.getElementById('age-max-value');
+    if (ageMinSlider) ageMinSlider.value = '0';
+    if (ageMaxSlider) ageMaxSlider.value = '730';
+    if (ageMinValue) ageMinValue.textContent = '0d';
+    if (ageMaxValue) ageMaxValue.textContent = '2y+';
+
+    // Debug: Log reading time statistics
+    const tabsWithReadingTime = allTabs.filter(t => t.readingTimeMinutes).length;
+    console.log(`[Analysis] ${tabsWithReadingTime}/${allTabs.length} tabs have reading time data`);
+
     renderStatistics();
     renderCharts(); // Render beautiful charts!
     renderFilters();
@@ -224,13 +337,17 @@ async function loadAnalysis() {
 
   if (lastFilename) {
     // Show reload button if we have a cached filename
-    document.getElementById('reload-last-btn').style.display = 'inline-block';
+    const reloadBtn = document.getElementById('reload-last-btn');
+    if (reloadBtn) {
+      reloadBtn.style.display = 'inline-block';
+      reloadBtn.textContent = `🔄 Reload ${lastFilename}`;
+    }
 
     // Show instructions with hint about last file
     document.getElementById('tabs-container').innerHTML = `
       <div class="empty-state">
         <h3>📂 No analysis loaded</h3>
-        <p>Click "📂 Load Analysis File" to load your analysis JSON file.</p>
+        <p>Click "🔄 Reload" to load your last analysis file.</p>
         <p style="margin-top: 10px;">
           <strong>Last loaded:</strong> <code>${lastFilename}</code>
         </p>
@@ -258,6 +375,126 @@ async function loadAnalysis() {
         </p>
       </div>
     `;
+  }
+
+  // Check IndexedDB status and show buttons if needed
+  await updateIndexedDBStatus();
+}
+
+/**
+ * Search content in IndexedDB
+ */
+async function searchContent(query) {
+  const statusEl = document.getElementById('content-search-status');
+
+  try {
+    statusEl.textContent = 'Searching...';
+    const results = await indexedDBStorage.searchContent(query, 100);
+
+    if (results.length === 0) {
+      statusEl.textContent = `No results found for "${query}"`;
+      contentSearchResults = null;
+    } else {
+      statusEl.textContent = `Found ${results.length} tabs matching "${query}"`;
+      contentSearchResults = results;
+    }
+
+    applyFilters();
+  } catch (error) {
+    console.error('[Content Search] Error:', error);
+    statusEl.textContent = `Error: ${error.message}. Try importing analysis to cache first.`;
+    contentSearchResults = null;
+  }
+}
+
+/**
+ * Import analysis file into IndexedDB
+ */
+async function importAnalysisToIndexedDB() {
+  if (!analysisData) {
+    alert('Please load an analysis file first');
+    return;
+  }
+
+  const progressDiv = document.getElementById('import-progress');
+  const phaseEl = document.getElementById('import-phase');
+  const countEl = document.getElementById('import-count');
+  const barEl = document.getElementById('import-progress-bar');
+  const importBtn = document.getElementById('import-to-idb-btn');
+
+  try {
+    // Show progress
+    progressDiv.style.display = 'block';
+    importBtn.disabled = true;
+
+    const stats = await indexedDBStorage.importFromAnalysisFile(
+      analysisData,
+      (phase, current, total) => {
+        phaseEl.textContent = `Importing ${phase}...`;
+        countEl.textContent = `${current} / ${total}`;
+        const percent = total > 0 ? (current / total) * 100 : 0;
+        barEl.style.width = `${percent}%`;
+      }
+    );
+
+    // Hide progress, show stats
+    progressDiv.style.display = 'none';
+
+    let message = `Import complete!\n\n`;
+    message += `✓ ${stats.tabs} tabs\n`;
+    message += `✓ ${stats.content} with full-text content\n`;
+    message += `✓ ${stats.entities} entities\n`;
+    message += `✓ ${stats.embeddings} embeddings\n`;
+
+    if (stats.errors.length > 0) {
+      message += `\n⚠️ ${stats.errors.length} errors (check console)`;
+      console.warn('[Import] Errors:', stats.errors);
+    }
+
+    alert(message);
+
+    // Update status display
+    await updateIndexedDBStatus();
+  } catch (error) {
+    progressDiv.style.display = 'none';
+    console.error('[Import] Failed:', error);
+    alert(`Import failed: ${error.message}`);
+  } finally {
+    importBtn.disabled = false;
+  }
+}
+
+/**
+ * Update IndexedDB status display
+ */
+async function updateIndexedDBStatus() {
+  try {
+    const stats = await indexedDBStorage.getStats();
+    const statusEl = document.getElementById('idb-status');
+    const importBtn = document.getElementById('import-to-idb-btn');
+    const clearBtn = document.getElementById('clear-cache-btn');
+
+    if (stats.tabs > 0) {
+      statusEl.style.display = 'block';
+      statusEl.innerHTML = `
+        <strong>📦 IndexedDB Cache:</strong>
+        ${stats.tabs} tabs •
+        ${stats.content} with content •
+        ${stats.entities} entities •
+        ${stats.embeddings} embeddings
+      `;
+      clearBtn.style.display = 'inline-block';
+    } else {
+      statusEl.style.display = 'none';
+      clearBtn.style.display = 'none';
+    }
+
+    // Show import button if analysis is loaded
+    if (analysisData && analysisData.tabs) {
+      importBtn.style.display = 'inline-block';
+    }
+  } catch (error) {
+    console.warn('[IndexedDB] Status check failed:', error);
   }
 }
 
@@ -409,6 +646,8 @@ function getReadingTime(tab) {
  * Apply all active filters
  */
 function applyFilters() {
+  console.log(`[Filter] Applying filters - Reading time: ${filters.readingTime.min}-${filters.readingTime.max}min`);
+
   filteredTabs = allTabs.filter(tab => {
     // Similar tabs filter (takes precedence)
     if (similarToTab) {
@@ -463,12 +702,37 @@ function applyFilters() {
       }
     }
 
-    // Reading time filter (only filter if we have data)
+    // Reading time filter - hide tabs without reading time data when filter is active
     const readingTime = getReadingTime(tab);
-    if (readingTime !== null) {
+    const isReadingTimeFilterActive = filters.readingTime.min > 0 || filters.readingTime.max < 60;
+
+    if (isReadingTimeFilterActive) {
+      // Filter is active - only show tabs with reading time data that match range
+      if (readingTime === null) {
+        return false; // Hide tabs without reading time data
+      }
       if (readingTime < filters.readingTime.min || readingTime > filters.readingTime.max) {
         return false;
       }
+    }
+
+    // Age filter (in days)
+    const ageDays = Math.floor((Date.now() - (tab.lastUsed * 1000)) / (1000 * 60 * 60 * 24));
+    if (ageDays < filters.age.min || ageDays > filters.age.max) {
+      return false;
+    }
+
+    // Content search filter (IndexedDB full-text search results)
+    if (contentSearchResults !== null) {
+      const tabInResults = contentSearchResults.find(r => r.id === tab.id || r.tabId === tab.id);
+      if (!tabInResults) {
+        return false; // Not in content search results
+      }
+      // Attach snippet for display in renderTabCard
+      tab._searchSnippet = tabInResults.snippet;
+    } else {
+      // Clear any previous snippet when not searching
+      delete tab._searchSnippet;
     }
 
     return true;
@@ -482,6 +746,10 @@ function applyFilters() {
     document.getElementById('results-count').textContent =
       `${filteredTabs.length} of ${allTabs.length} tabs`;
   }
+
+  // Update histograms to show filtered results
+  renderReadingTimeHistogram();
+  renderAgeHistogram();
 
   // Reset to page 1
   currentPage = 1;
@@ -499,6 +767,8 @@ function clearFilters() {
   filters.domain.clear();
   filters.readingTime.min = 0;
   filters.readingTime.max = 60;
+  filters.age.min = 0;
+  filters.age.max = 730;
 
   document.getElementById('search-input').value = '';
   document.querySelectorAll('.filter-pill').forEach(pill => {
@@ -510,6 +780,12 @@ function clearFilters() {
   document.getElementById('reading-time-max').value = 60;
   document.getElementById('reading-time-min-value').textContent = '0';
   document.getElementById('reading-time-max-value').textContent = '60+';
+
+  // Reset age sliders
+  document.getElementById('age-min').value = 0;
+  document.getElementById('age-max').value = 730;
+  document.getElementById('age-min-value').textContent = '0d';
+  document.getElementById('age-max-value').textContent = '2y+';
 
   clearSimilarFilter();
   applyFilters();
@@ -563,23 +839,30 @@ function renderPage() {
       return;
     }
 
-    // Handle tab card click (switch to tab)
+    // Handle entity badge click (filter by entity)
+    const entityBadge = e.target.closest('.entity-badge');
+    if (entityBadge) {
+      const entityText = entityBadge.textContent.trim();
+      // Add to search filter
+      filters.search = entityText.toLowerCase();
+      document.getElementById('search-input').value = entityText;
+      applyFilters();
+      // Scroll to top to see results
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // Handle tab card click (open URL in new tab - switch doesn't work with analysis file)
     const tabCard = e.target.closest('.tab-card');
     if (tabCard) {
-      // Don't switch if clicking on a link or button
-      if (e.target.tagName === 'A' || e.target.closest('a') || e.target.closest('button')) {
+      // Don't open if clicking on a link, button, or entity
+      if (e.target.tagName === 'A' || e.target.closest('a') || e.target.closest('button') || e.target.closest('.entity-badge')) {
         return;
       }
 
-      const tabId = parseInt(tabCard.dataset.tabId);
-      try {
-        await browser.tabs.update(tabId, { active: true });
-        // Also focus the window
-        const tab = await browser.tabs.get(tabId);
-        await browser.windows.update(tab.windowId, { focused: true });
-      } catch (error) {
-        console.error('Failed to switch to tab:', error);
-        alert(`Failed to switch to tab: ${error.message}`);
+      const url = tabCard.querySelector('a').href;
+      if (url) {
+        window.open(url, '_blank');
       }
     }
   });
@@ -613,19 +896,42 @@ function renderTabCard(tab) {
     ageBadge = `<span class="badge" style="background: #FBBF24; color: #1A1A1A;">📅 ${Math.floor(ageDays / 30)}mo old</span>`;
   }
 
-  // Use actual reading time from page content analysis
+  // Use actual reading time from page content analysis with gradient color
   const readingTime = getReadingTime(tab);
-  const readingBadge = readingTime
-    ? `<span class="badge" style="background: #10B981; color: white;">📖 ${readingTime}min</span>`
-    : '';
+  let readingBadge = '';
+  if (readingTime) {
+    // Gradient: green (<5min) → yellow (15min) → orange (30min) → red (60min+)
+    let bgColor;
+    if (readingTime < 5) {
+      bgColor = '#10B981'; // Green
+    } else if (readingTime < 15) {
+      // Green to Yellow
+      const t = (readingTime - 5) / 10;
+      bgColor = `rgb(${Math.round(16 + t * (234 - 16))}, ${Math.round(185 + t * (179 - 185))}, ${Math.round(129 + t * (8 - 129))})`;
+    } else if (readingTime < 30) {
+      // Yellow to Orange
+      const t = (readingTime - 15) / 15;
+      bgColor = `rgb(${Math.round(234 + t * (251 - 234))}, ${Math.round(179 + t * (146 - 179))}, ${Math.round(8 + t * (60 - 8))})`;
+    } else if (readingTime < 60) {
+      // Orange to Red
+      const t = (readingTime - 30) / 30;
+      bgColor = `rgb(${Math.round(251 + t * (239 - 251))}, ${Math.round(146 + t * (68 - 146))}, ${Math.round(60 + t * (68 - 60))})`;
+    } else {
+      bgColor = '#EF4444'; // Red for 60min+
+    }
+    readingBadge = `<span class="badge" style="background: ${bgColor}; color: white;">📖 ${readingTime}min</span>`;
+  }
 
-  const badges = classification ? `
+  // Build badges - always show age and reading time even if no classification
+  const classificationBadges = classification ? `
     <span class="badge badge-intent">${classification.intent.label}</span>
     <span class="badge badge-status">${classification.status.label}</span>
     <span class="badge badge-type">${classification.contentType.label}</span>
-    ${ageBadge}
-    ${readingBadge}
   ` : '';
+
+  const badges = [classificationBadges, ageBadge, readingBadge]
+    .filter(b => b) // Remove empty strings
+    .join('\n');
 
   // Search query display
   const searchQueryHtml = searchQuery ? `
@@ -644,19 +950,19 @@ function renderTabCard(tab) {
       ${entities.people.length > 0 ? `
         <div class="entity-group">
           <span class="entity-label">👤 People:</span>
-          ${entities.people.map(e => e.word).join(', ')}
+          ${entities.people.map(e => `<span class="entity-badge" style="display: inline-block; padding: 2px 8px; margin: 2px; background: #E8F5E9; color: #2E7D32; border-radius: 12px; cursor: pointer; font-size: 12px; transition: all 0.2s;" onmouseover="this.style.background='#C8E6C9'" onmouseout="this.style.background='#E8F5E9'">${escapeHtml(e.word)}</span>`).join('')}
         </div>
       ` : ''}
       ${entities.organizations.length > 0 ? `
         <div class="entity-group">
           <span class="entity-label">🏢 Organizations:</span>
-          ${entities.organizations.map(e => e.word).join(', ')}
+          ${entities.organizations.map(e => `<span class="entity-badge" style="display: inline-block; padding: 2px 8px; margin: 2px; background: #E3F2FD; color: #1565C0; border-radius: 12px; cursor: pointer; font-size: 12px; transition: all 0.2s;" onmouseover="this.style.background='#BBDEFB'" onmouseout="this.style.background='#E3F2FD'">${escapeHtml(e.word)}</span>`).join('')}
         </div>
       ` : ''}
       ${entities.locations.length > 0 ? `
         <div class="entity-group">
           <span class="entity-label">📍 Locations:</span>
-          ${entities.locations.map(e => e.word).join(', ')}
+          ${entities.locations.map(e => `<span class="entity-badge" style="display: inline-block; padding: 2px 8px; margin: 2px; background: #FFF3E0; color: #E65100; border-radius: 12px; cursor: pointer; font-size: 12px; transition: all 0.2s;" onmouseover="this.style.background='#FFE0B2'" onmouseout="this.style.background='#FFF3E0'">${escapeHtml(e.word)}</span>`).join('')}
         </div>
       ` : ''}
     </div>
@@ -678,6 +984,13 @@ function renderTabCard(tab) {
     </button>
   ` : '';
 
+  // Content search snippet
+  const snippetHtml = tab._searchSnippet ? `
+    <div class="content-snippet" style="margin-top: 8px; padding: 8px 12px; background: #E3F2FD; border-left: 3px solid #2196F3; border-radius: 4px; font-size: 12px; line-height: 1.4;">
+      <span style="font-weight: 600; color: #1976D2;">💬 Content match:</span> <span style="color: #424242;">${escapeHtml(tab._searchSnippet)}</span>
+    </div>
+  ` : '';
+
   return `
     <div class="tab-card" data-tab-id="${tab.id}" style="cursor: pointer; transition: all 0.2s;">
       <div class="tab-header">
@@ -692,6 +1005,7 @@ function renderTabCard(tab) {
       <div class="tab-badges">${badges}</div>
       ${searchQueryHtml}
       ${entitiesHtml}
+      ${snippetHtml}
     </div>
   `;
 }
@@ -778,6 +1092,9 @@ function destroyCharts(tabName) {
  */
 function renderChartsForTab(tabName) {
   const { statistics } = analysisData;
+
+  // Destroy existing charts before recreating
+  destroyCharts(tabName);
 
   // Color palettes
   const colors = {
@@ -1095,12 +1412,13 @@ function renderCharts() {
   // Render initial tab (overview)
   renderChartsForTab('overview');
 
-  // Render reading time histogram
+  // Render histograms
   renderReadingTimeHistogram();
+  renderAgeHistogram();
 }
 
 /**
- * Render reading time histogram
+ * Render reading time histogram with smooth animation (updates dynamically with filters)
  */
 function renderReadingTimeHistogram() {
   const canvas = document.getElementById('reading-time-histogram');
@@ -1108,50 +1426,191 @@ function renderReadingTimeHistogram() {
 
   const ctx = canvas.getContext('2d');
 
-  // Collect reading times from all tabs
-  const readingTimes = allTabs
+  // Collect reading times from currently filtered tabs (like Airbnb UX)
+  const readingTimes = filteredTabs
     .map(tab => getReadingTime(tab))
     .filter(time => time !== null);
 
   if (readingTimes.length === 0) {
-    return; // No data, don't render
+    // Clear canvas if no data
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    histogramPreviousBuckets = null;
+    return;
   }
 
   // Create histogram buckets (0-60 min, 5min buckets)
-  const buckets = Array(12).fill(0); // 0-5, 5-10, ..., 55-60
+  const targetBuckets = Array(12).fill(0); // 0-5, 5-10, ..., 55-60
   readingTimes.forEach(time => {
     const bucketIndex = Math.min(Math.floor(time / 5), 11);
-    buckets[bucketIndex]++;
+    targetBuckets[bucketIndex]++;
   });
 
-  // Simple bar chart rendering with Canvas API
-  const width = canvas.width = canvas.offsetWidth * 2; // 2x for hi-dpi
-  const height = canvas.height = 160; // 2x for hi-dpi
-  canvas.style.width = `${canvas.offsetWidth}px`;
-  canvas.style.height = '80px';
+  // Initialize previous buckets on first render
+  if (!histogramPreviousBuckets) {
+    histogramPreviousBuckets = Array(12).fill(0);
+  }
 
-  const barWidth = width / buckets.length;
-  const maxCount = Math.max(...buckets);
+  // Cancel any ongoing animation
+  if (histogramAnimationFrame) {
+    cancelAnimationFrame(histogramAnimationFrame);
+  }
 
-  // Get color from CSS variable
-  const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
+  // Animate from previous to target
+  const startTime = performance.now();
+  const duration = 300; // 300ms animation
 
-  buckets.forEach((count, i) => {
-    const barHeight = maxCount > 0 ? (count / maxCount) * (height - 20) : 0;
-    const x = i * barWidth;
-    const y = height - barHeight;
+  function animate(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
 
-    ctx.fillStyle = primaryColor;
-    ctx.fillRect(x + 2, y, barWidth - 4, barHeight);
+    // Ease out cubic for smooth deceleration
+    const easeProgress = 1 - Math.pow(1 - progress, 3);
 
-    // Labels at bottom
-    if (i % 2 === 0) { // Every other label to avoid crowding
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${i * 5}`, x + barWidth / 2, height - 5);
+    // Interpolate bucket values
+    const currentBuckets = histogramPreviousBuckets.map((prev, i) => {
+      return prev + (targetBuckets[i] - prev) * easeProgress;
+    });
+
+    // Clear and draw
+    const width = canvas.width = canvas.offsetWidth * 2; // 2x for hi-dpi
+    const height = canvas.height = 160; // 2x for hi-dpi
+    canvas.style.width = `${canvas.offsetWidth}px`;
+    canvas.style.height = '80px';
+
+    ctx.clearRect(0, 0, width, height);
+
+    const barWidth = width / currentBuckets.length;
+    const maxCount = Math.max(...targetBuckets);
+
+    // Get color from CSS variable
+    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
+
+    currentBuckets.forEach((count, i) => {
+      const barHeight = maxCount > 0 ? (count / maxCount) * (height - 20) : 0;
+      const x = i * barWidth;
+      const y = height - barHeight;
+
+      ctx.fillStyle = primaryColor;
+      ctx.fillRect(x + 2, y, barWidth - 4, barHeight);
+
+      // Labels at bottom
+      if (i % 2 === 0) { // Every other label to avoid crowding
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${i * 5}`, x + barWidth / 2, height - 5);
+      }
+    });
+
+    if (progress < 1) {
+      histogramAnimationFrame = requestAnimationFrame(animate);
+    } else {
+      histogramPreviousBuckets = targetBuckets;
+      histogramAnimationFrame = null;
     }
+  }
+
+  histogramAnimationFrame = requestAnimationFrame(animate);
+}
+
+// Age histogram animation state
+let ageHistogramPreviousBuckets = null;
+let ageHistogramAnimationFrame = null;
+
+/**
+ * Render age histogram with smooth animation (updates dynamically with filters)
+ */
+function renderAgeHistogram() {
+  const canvas = document.getElementById('age-histogram');
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+
+  // Collect ages from currently filtered tabs
+  const ages = filteredTabs.map(tab => {
+    return Math.floor((Date.now() - (tab.lastUsed * 1000)) / (1000 * 60 * 60 * 24));
   });
+
+  if (ages.length === 0) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ageHistogramPreviousBuckets = null;
+    return;
+  }
+
+  // Create histogram buckets (0-730 days in 30-day/1-month buckets)
+  const targetBuckets = Array(24).fill(0); // 24 months
+  ages.forEach(ageDays => {
+    const bucketIndex = Math.min(Math.floor(ageDays / 30), 23);
+    targetBuckets[bucketIndex]++;
+  });
+
+  // Initialize previous buckets on first render
+  if (!ageHistogramPreviousBuckets) {
+    ageHistogramPreviousBuckets = Array(24).fill(0);
+  }
+
+  // Cancel any ongoing animation
+  if (ageHistogramAnimationFrame) {
+    cancelAnimationFrame(ageHistogramAnimationFrame);
+  }
+
+  // Animate from previous to target
+  const startTime = performance.now();
+  const duration = 300; // 300ms animation
+
+  function animate(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+
+    // Ease out cubic for smooth deceleration
+    const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+    // Interpolate bucket values
+    const currentBuckets = ageHistogramPreviousBuckets.map((prev, i) => {
+      return prev + (targetBuckets[i] - prev) * easeProgress;
+    });
+
+    // Clear and draw
+    const width = canvas.width = canvas.offsetWidth * 2; // 2x for hi-dpi
+    const height = canvas.height = 160; // 2x for hi-dpi
+    canvas.style.width = `${canvas.offsetWidth}px`;
+    canvas.style.height = '80px';
+
+    ctx.clearRect(0, 0, width, height);
+
+    const barWidth = width / currentBuckets.length;
+    const maxCount = Math.max(...targetBuckets);
+
+    // Get color from CSS variable
+    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
+
+    currentBuckets.forEach((count, i) => {
+      const barHeight = maxCount > 0 ? (count / maxCount) * (height - 20) : 0;
+      const x = i * barWidth;
+      const y = height - barHeight;
+
+      ctx.fillStyle = primaryColor;
+      ctx.fillRect(x + 2, y, barWidth - 4, barHeight);
+
+      // Labels at bottom (every 3 months)
+      if (i % 3 === 0) {
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        const label = i === 0 ? '0' : `${i}mo`;
+        ctx.fillText(label, x + barWidth / 2, height - 5);
+      }
+    });
+
+    if (progress < 1) {
+      ageHistogramAnimationFrame = requestAnimationFrame(animate);
+    } else {
+      ageHistogramPreviousBuckets = targetBuckets;
+      ageHistogramAnimationFrame = null;
+    }
+  }
+
+  ageHistogramAnimationFrame = requestAnimationFrame(animate);
 }
 
 /**

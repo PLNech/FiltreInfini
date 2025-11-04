@@ -101,6 +101,11 @@ function setupEventListeners() {
     window.location.href = 'analysis.html';
   });
 
+  // Settings
+  document.getElementById('settings-btn').addEventListener('click', () => {
+    window.location.href = 'settings.html';
+  });
+
   // ML Debug Modal
   const mlDebugBtn = document.getElementById('ml-debug-btn');
   if (mlDebugBtn) {

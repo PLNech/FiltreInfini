@@ -36,6 +36,7 @@ Options:
   --all              Analyze all tabs (default: limit to 100)
   --limit N          Analyze up to N tabs
   --batch-size N     Process N tabs at once (default: 10, improves speed)
+  --resume           Resume from most recent checkpoint
   --help, -h         Show this help message
 
 Examples:
@@ -43,6 +44,7 @@ Examples:
   node scripts/analyze-tabs.js --limit 50         # Analyze 50 tabs
   node scripts/analyze-tabs.js --all              # Analyze all tabs
   node scripts/analyze-tabs.js --batch-size 20    # Use larger batches (faster, more memory)
+  node scripts/analyze-tabs.js --resume           # Resume from last checkpoint
 
 Output:
   Generates: data/analysis-TIMESTAMP.json
@@ -61,6 +63,7 @@ Performance Tips:
 }
 
 const allFlag = args.includes('--all');
+const resumeFlag = args.includes('--resume');
 const limitIndex = args.indexOf('--limit');
 const LIMIT = limitIndex !== -1 ? parseInt(args[limitIndex + 1]) : (allFlag ? 99999 : 100);
 
@@ -68,7 +71,7 @@ const batchSizeIndex = args.indexOf('--batch-size');
 const BATCH_SIZE = batchSizeIndex !== -1 ? parseInt(args[batchSizeIndex + 1]) : 10;
 
 console.log('🤖 FiltreInfini Comprehensive Tab Analysis Pipeline\n');
-console.log(`Settings: Analyze ${allFlag ? 'ALL' : 'up to ' + LIMIT} tabs, batch size ${BATCH_SIZE}`);
+console.log(`Settings: Analyze ${allFlag ? 'ALL' : 'up to ' + LIMIT} tabs, batch size ${BATCH_SIZE}${resumeFlag ? ' (RESUME mode)' : ''}`);
 console.log(`Output: data/analysis-${Date.now()}.json\n`);
 
 // Configure Transformers.js for local models
@@ -120,6 +123,34 @@ function loadTabs() {
   }
 
   return allTabs;
+}
+
+/**
+ * Load most recent checkpoint (if --resume flag)
+ */
+function loadCheckpoint() {
+  const dataDir = join(rootDir, 'data');
+  const files = readdirSync(dataDir).filter(f => f.startsWith('checkpoint-'));
+
+  if (files.length === 0) {
+    console.log('⚠️  No checkpoint found, starting fresh\n');
+    return null;
+  }
+
+  // Use most recent checkpoint
+  const file = files.sort().reverse()[0];
+  console.log(`📦 Resuming from: ${file}`);
+
+  const content = readFileSync(join(dataDir, file), 'utf-8');
+  const checkpoint = JSON.parse(content);
+
+  if (!checkpoint.metadata || !checkpoint.metadata.checkpoint) {
+    console.log('⚠️  Invalid checkpoint file, starting fresh\n');
+    return null;
+  }
+
+  console.log(`✓ Loaded ${checkpoint.tabs.length}/${checkpoint.metadata.targetTabs} completed tabs\n`);
+  return checkpoint;
 }
 
 /**
@@ -201,10 +232,11 @@ class DownloadManager {
     this.inProgressByDomain = new Map(); // domain -> URL currently being fetched
     this.results = new Map(); // url -> readingTime or null
     this.attempts = new Map(); // url -> attempt count
+    this.queuedAt = new Map(); // url -> timestamp when added to queue
     this.domainLastFetch = new Map(); // domain -> timestamp of last fetch
     this.domainBackoff = new Map(); // domain -> backoff delay in ms
     this.MAX_RETRIES = 3;
-    this.TIMEOUT_MS = 8000;
+    this.TIMEOUT_MS = 5000; // Reduced from 8s to 5s - more aggressive
     this.MIN_DOMAIN_DELAY = 1000; // 1s between requests to same domain
     this.MAX_WORKERS = maxWorkers; // Cap total concurrent workers
     this.successCount = 0;
@@ -213,6 +245,98 @@ class DownloadManager {
     this.waybackRescueCount = 0;
     this.activeWorkers = 0;
     this.peakWorkers = 0;
+    this.skippedCount = 0;
+    this.privacyProtectedCount = 0;
+
+    // URL patterns that will definitely never work (very conservative list)
+    this.BLOCKLIST_PATTERNS = [
+      // Specific auth-required sites
+      /^https?:\/\/claude\.ai\/(login|chat|project)/i,        // Claude auth pages
+      /^https?:\/\/accounts\.google\.com/i,                   // Google accounts
+
+      // Pure tracking infrastructure
+      /^https?:\/\/.*doubleclick\.net/i,                      // Google ads
+      /^https?:\/\/.*googletagmanager\.com/i,                 // Google Tag Manager
+      /^https?:\/\/.*facebook\.com\/tr\//i,                   // Facebook pixel
+      /^https?:\/\/.*\.g\.doubleclick\.net/i                  // DoubleClick tracking
+    ];
+  }
+
+  /**
+   * Check if URL matches blocklist patterns
+   */
+  isBlocklisted(url) {
+    return this.BLOCKLIST_PATTERNS.some(pattern => pattern.test(url));
+  }
+
+  /**
+   * Check if URL is sensitive and should NOT be sent to archive.org
+   * Detects: auth tokens, signatures, payment pages, personal data
+   */
+  isSensitiveUrl(url) {
+    const urlLower = url.toLowerCase();
+
+    // Sensitive query parameters (tokens, signatures, sessions)
+    const SENSITIVE_PARAMS = [
+      'token', 'auth', 'key', 'signature', 'sig', 'session', 'sessionid',
+      'expires', 'secret', 'password', 'credential', 'access_token',
+      'refresh_token', 'api_key', 'apikey', 'bearer', 'jwt'
+    ];
+
+    // Sensitive path patterns
+    const SENSITIVE_PATHS = [
+      '/checkout', '/payment', '/pay/', '/billing', '/account',
+      '/auth/', '/login', '/signin', '/password', '/verify',
+      '/2fa', '/mfa', '/reset', '/confirm', '/activate',
+      'acs-auth', 'bank', 'wallet', 'card', 'paypal'
+    ];
+
+    // Sensitive domains
+    const SENSITIVE_DOMAINS = [
+      'bank', 'payment', 'paypal', 'stripe', 'square',
+      'wise', 'revolut', 'n26', 'monzo', 'starling',
+      '3ds', 'acs-', 'authorize.net', 'braintree',
+      'checkout.com', 'adyen', 'worldpay'
+    ];
+
+    // Check for sensitive query params
+    try {
+      const urlObj = new URL(url);
+      const params = urlObj.searchParams;
+      for (const [key] of params) {
+        if (SENSITIVE_PARAMS.some(p => key.toLowerCase().includes(p))) {
+          return true;
+        }
+      }
+
+      // Check for sensitive path patterns
+      const path = urlObj.pathname.toLowerCase();
+      if (SENSITIVE_PATHS.some(p => path.includes(p))) {
+        return true;
+      }
+
+      // Check for sensitive domains
+      const domain = urlObj.hostname.toLowerCase();
+      if (SENSITIVE_DOMAINS.some(d => domain.includes(d))) {
+        return true;
+      }
+
+      // Check for very long query strings (likely contains tokens/signatures)
+      if (urlObj.search.length > 200) {
+        return true;
+      }
+
+      // Check for CDN signed URLs
+      if (params.has('Signature') && params.has('Expires')) {
+        return true; // AWS CloudFront/S3 signed URLs
+      }
+
+    } catch (e) {
+      // If URL parsing fails, treat as sensitive to be safe
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -268,8 +392,17 @@ class DownloadManager {
       this.results.set(url, null);
       return;
     }
+
+    // Skip blocklisted URLs (auth pages, etc.)
+    if (this.isBlocklisted(url)) {
+      this.results.set(url, null);
+      this.skippedCount++;
+      return;
+    }
+
     this.queue.push(url);
     this.attempts.set(url, 0);
+    this.queuedAt.set(url, Date.now());
   }
 
   /**
@@ -364,7 +497,14 @@ class DownloadManager {
       const wordCount = textContent.split(/\s+/).length;
       const readingTimeMinutes = Math.max(1, Math.round(wordCount / 200));
 
-      return readingTimeMinutes;
+      // Extract first 10,000 characters for full-text search
+      const fullText = textContent.slice(0, 10000);
+
+      return {
+        readingTimeMinutes,
+        fullText,
+        wordCount
+      };
     } catch (error) {
       throw error;
     }
@@ -407,7 +547,14 @@ class DownloadManager {
         .trim();
 
       const wordCount = textContent.split(/\s+/).length;
-      return Math.max(1, Math.round(wordCount / 200));
+      const readingTimeMinutes = Math.max(1, Math.round(wordCount / 200));
+      const fullText = textContent.slice(0, 10000);
+
+      return {
+        readingTimeMinutes,
+        fullText,
+        wordCount
+      };
     } catch (error) {
       throw new Error(`Archive.ph failed: ${error.message}`);
     }
@@ -418,6 +565,13 @@ class DownloadManager {
    * Uses the most recent snapshot available
    */
   async fetchFromWayback(originalUrl) {
+    // PRIVACY: Never send sensitive URLs to archive.org
+    if (this.isSensitiveUrl(originalUrl)) {
+      this.privacyProtectedCount++;
+      console.log(`\n   [privacy] Skipping wayback for sensitive URL (auth/payment/signature detected)`);
+      throw new Error('Sensitive URL - skipping wayback for privacy');
+    }
+
     try {
       // Get most recent snapshot from Wayback availability API
       const availabilityUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(originalUrl)}`;
@@ -473,7 +627,14 @@ class DownloadManager {
         .trim();
 
       const wordCount = textContent.split(/\s+/).length;
-      return Math.max(1, Math.round(wordCount / 200));
+      const readingTimeMinutes = Math.max(1, Math.round(wordCount / 200));
+      const fullText = textContent.slice(0, 10000);
+
+      return {
+        readingTimeMinutes,
+        fullText,
+        wordCount
+      };
     } catch (error) {
       throw new Error(`Wayback failed: ${error.message}`);
     }
@@ -496,12 +657,30 @@ class DownloadManager {
    * Find next fetchable URL from queue
    */
   getNextFetchableUrl() {
+    const now = Date.now();
+    const STUCK_THRESHOLD_MS = 120000; // 2 minutes
+    const HIGH_BACKOFF_MS = 30000; // 30 seconds
+
     for (let i = 0; i < this.queue.length; i++) {
       const url = this.queue[i];
       const domain = this.getDomain(url);
+      const backoff = this.domainBackoff.get(domain) || this.MIN_DOMAIN_DELAY;
+      const queuedAt = this.queuedAt.get(url) || now;
+      const waitTime = now - queuedAt;
+
+      // Skip stuck URLs with high-backoff domains
+      if (waitTime > STUCK_THRESHOLD_MS && backoff >= HIGH_BACKOFF_MS) {
+        console.log(`\n   [skip] ${url} - stuck for ${(waitTime / 1000).toFixed(0)}s with ${domain} (backoff: ${(backoff / 1000).toFixed(0)}s)`);
+        this.queue.splice(i, 1);
+        this.results.set(url, null);
+        this.skippedCount++;
+        i--; // Check this index again
+        continue;
+      }
 
       if (this.canStartDomainFetch(domain)) {
         this.queue.splice(i, 1); // Remove from queue
+        this.queuedAt.delete(url); // Clean up timestamp
         return url;
       }
     }
@@ -521,8 +700,8 @@ class DownloadManager {
     this.attempts.set(url, attempt);
 
     try {
-      const readingTime = await this.fetchOne(url);
-      this.results.set(url, readingTime);
+      const result = await this.fetchOne(url);
+      this.results.set(url, result);
       this.successCount++;
       this.markDomainFetched(domain);
       this.resetDomainBackoff(domain);
@@ -538,11 +717,12 @@ class DownloadManager {
       if (attempt < this.MAX_RETRIES) {
         this.retryCount++;
         this.queue.push(url); // Add to END of queue
+        this.queuedAt.set(url, Date.now()); // Reset queue time for retry
       } else {
         // Last resort: Wayback
         try {
-          const readingTime = await this.fetchFromWayback(url);
-          this.results.set(url, readingTime);
+          const result = await this.fetchFromWayback(url);
+          this.results.set(url, result);
           this.successCount++;
           this.waybackRescueCount++;
         } catch (waybackError) {
@@ -599,7 +779,9 @@ class DownloadManager {
    */
   getStatsString() {
     const s = this.getStats();
-    return `✓${s.success} ✗${s.failure} ⏳${s.pending} 🔄${s.retries} 🏛️${s.wayback} | 🔥${s.active} (peak:${s.peak})`;
+    const skipStr = this.skippedCount > 0 ? ` ⏭️${this.skippedCount}` : '';
+    const privacyStr = this.privacyProtectedCount > 0 ? ` 🔒${this.privacyProtectedCount}` : '';
+    return `✓${s.success} ✗${s.failure} ⏳${s.pending} 🔄${s.retries} 🏛️${s.wayback}${skipStr}${privacyStr} | 🔥${s.active} (peak:${s.peak})`;
   }
 }
 
@@ -845,9 +1027,24 @@ async function main() {
     const tabs = loadTabs();
     console.log(`✓ Loaded ${tabs.length} tabs\n`);
 
-    // Limit analysis
-    const sample = tabs.slice(0, Math.min(LIMIT, tabs.length));
-    console.log(`📊 Analyzing ${sample.length} tabs with all 3 models...\n`);
+    // Load checkpoint if --resume
+    let checkpointData = null;
+    let completedUrls = new Set();
+    if (resumeFlag) {
+      checkpointData = loadCheckpoint();
+      if (checkpointData) {
+        completedUrls = new Set(checkpointData.tabs.map(t => t.url));
+      }
+    }
+
+    // Limit analysis and filter out completed tabs
+    let sample = tabs.slice(0, Math.min(LIMIT, tabs.length));
+    if (checkpointData) {
+      sample = sample.filter(tab => !completedUrls.has(tab.url));
+      console.log(`📊 Resuming: ${completedUrls.size} done, ${sample.length} remaining (${completedUrls.size + sample.length} total)\n`);
+    } else {
+      console.log(`📊 Analyzing ${sample.length} tabs with all 3 models...\n`);
+    }
 
     // Load all 3 models
     console.log('🔄 Loading models (this may take 60-90s)...\n');
@@ -879,16 +1076,21 @@ async function main() {
 
     // Analyze each tab in batches (ML models only)
     console.log(`🧠 Running comprehensive analysis (batches of ${BATCH_SIZE})...\n`);
-    const results = [];
+    const results = checkpointData ? checkpointData.tabs : []; // Start with checkpoint results
     const startAnalysis = Date.now();
     const checkpointInterval = 100; // Save every 100 tabs
-    const checkpointFile = join(rootDir, 'data', `checkpoint-${Date.now()}.json`);
+    const checkpointFile = checkpointData
+      ? join(rootDir, 'data', checkpointData.metadata.checkpointFile || `checkpoint-${Date.now()}.json`)
+      : join(rootDir, 'data', `checkpoint-${Date.now()}.json`);
+
+    const totalToAnalyze = (checkpointData ? completedUrls.size : 0) + sample.length;
 
     for (let batchStart = 0; batchStart < sample.length; batchStart += BATCH_SIZE) {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, sample.length);
       const batch = sample.slice(batchStart, batchEnd);
 
-      process.stdout.write(`\r   Progress: ${batchEnd}/${sample.length} | DL: ${downloadManager.getStatsString()}`);
+      const currentProgress = (checkpointData ? completedUrls.size : 0) + batchEnd;
+      process.stdout.write(`\r   Progress: ${currentProgress}/${totalToAnalyze} | DL: ${downloadManager.getStatsString()}`);
 
       // Process batch: Run ML models in parallel
       const batchResults = await Promise.all(
@@ -902,15 +1104,17 @@ async function main() {
           // Extract search query if applicable
           const searchQuery = extractSearchQuery(tab.url);
 
-          // Wait for reading time from download manager
-          const readingTimeMinutes = await downloadManager.getResult(tab.url);
+          // Wait for reading time and full text from download manager
+          const contentData = await downloadManager.getResult(tab.url);
 
           return {
             ...tab,
             classification,
             entities,
             embedding,
-            readingTimeMinutes: readingTimeMinutes || undefined,
+            readingTimeMinutes: contentData?.readingTimeMinutes || undefined,
+            fullText: contentData?.fullText || undefined,
+            wordCount: contentData?.wordCount || undefined,
             searchQuery: searchQuery || undefined,
             analyzedAt: Date.now()
           };
@@ -921,19 +1125,20 @@ async function main() {
 
       // Checkpoint save every N tabs
       if (results.length % checkpointInterval === 0) {
-        const checkpointData = {
+        const checkpointSaveData = {
           metadata: {
             version: '1.0.0',
             checkpoint: true,
+            checkpointFile: checkpointFile.split('/').pop(), // Store filename for resume
             analyzedAt: Date.now(),
             totalTabs: results.length,
-            targetTabs: sample.length,
-            progress: `${results.length}/${sample.length}`
+            targetTabs: totalToAnalyze,
+            progress: `${results.length}/${totalToAnalyze}`
           },
           tabs: results
         };
-        writeFileSync(checkpointFile, JSON.stringify(checkpointData, null, 2));
-        console.log(`\n   💾 Checkpoint saved: ${results.length}/${sample.length} tabs`);
+        writeFileSync(checkpointFile, JSON.stringify(checkpointSaveData, null, 2));
+        console.log(`\n   💾 Checkpoint saved: ${results.length}/${totalToAnalyze} tabs`);
       }
     }
 
@@ -941,14 +1146,21 @@ async function main() {
     await queuePromise;
 
     const dlStats = downloadManager.getStats();
-    console.log(`\r   Progress: ${sample.length}/${sample.length} | DL: ${downloadManager.getStatsString()}`);
+    console.log(`\r   Progress: ${totalToAnalyze}/${totalToAnalyze} | DL: ${downloadManager.getStatsString()}`);
 
     const analysisTime = Date.now() - startAnalysis;
     console.log(`\n✓ Analysis complete in ${(analysisTime / 1000).toFixed(1)}s`);
     console.log(`  Average: ${Math.round(analysisTime / results.length)}ms per tab`);
     console.log(`  Reading time: ${dlStats.success}✓ ${dlStats.failure}✗ (${((dlStats.success / results.length) * 100).toFixed(1)}% success)`);
     console.log(`  Peak workers: ${dlStats.peak} concurrent (1 per domain)`);
-    console.log(`  Retries: ${dlStats.retries}, Wayback rescues: ${dlStats.wayback}\n`);
+    console.log(`  Retries: ${dlStats.retries}, Wayback rescues: ${dlStats.wayback}`);
+    if (downloadManager.skippedCount > 0) {
+      console.log(`  Skipped: ${downloadManager.skippedCount} (blocklisted or stuck)`);
+    }
+    if (downloadManager.privacyProtectedCount > 0) {
+      console.log(`  🔒 Privacy protected: ${downloadManager.privacyProtectedCount} URLs not sent to archive.org (auth/payment/signatures)`);
+    }
+    console.log('');
 
     // Find similar tabs
     findSimilarTabs(results);

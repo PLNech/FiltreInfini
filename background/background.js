@@ -5,7 +5,41 @@
  * - Auto-cleanup of Bin tabs via alarms API
  * - Cleanup of orphaned storage entries
  * - Background tab discovery (Firefox Android workaround)
+ * - Platform detection (Desktop vs Android)
+ * - History analysis (Desktop only - Android uses tab-event fallback)
  */
+
+// =======================
+// Platform Detection
+// =======================
+let platformInfo = {
+  isAndroid: false,
+  isDesktop: false,
+  os: 'unknown',
+  hasHistoryAPI: false
+};
+
+async function detectPlatform() {
+  try {
+    const info = await browser.runtime.getPlatformInfo();
+    platformInfo.os = info.os;
+    platformInfo.isAndroid = info.os === 'android';
+    platformInfo.isDesktop = !platformInfo.isAndroid;
+
+    // Check if history API is available
+    // Note: browser.history exists on Android but doesn't work reliably
+    platformInfo.hasHistoryAPI = platformInfo.isDesktop && typeof browser.history !== 'undefined';
+
+    console.log('[Platform] Detected:', platformInfo);
+    return platformInfo;
+  } catch (error) {
+    console.error('[Platform] Detection failed:', error);
+    // Fallback: assume desktop
+    platformInfo.isDesktop = true;
+    platformInfo.hasHistoryAPI = typeof browser.history !== 'undefined';
+    return platformInfo;
+  }
+}
 
 /**
  * Progressive Tab Discovery (Firefox Android Workaround)
@@ -184,38 +218,14 @@ browser.runtime.onInstalled.addListener(async (details) => {
 
   console.log('Cleanup alarm created');
 
-  // Initialize progressive tab tracker
-  await tabTracker.init();
-
-  // Trigger ML Worker initialization (lazy load in background)
-  console.log('[Background] Triggering ML Worker initialization...');
-
-  // Check if MLClassifierWorker is available
-  if (typeof MLClassifierWorker !== 'undefined') {
-    MLClassifierWorker.getInstance().catch(err => {
-      console.error('[Background] ML Worker failed to initialize:', err);
-    });
-  } else {
-    console.error('[Background] MLClassifierWorker not defined! Check if ml-worker.js loaded.');
-  }
+  // Run full initialization
+  await initialize();
 });
 
-// Initialize tab tracker on browser startup
+// Initialize on browser startup
 browser.runtime.onStartup.addListener(async () => {
   console.log('FiltreInfini starting up...');
-  await tabTracker.init();
-
-  // Trigger ML Worker initialization (lazy load in background)
-  console.log('[Background] Triggering ML Worker initialization...');
-
-  // Check if MLClassifierWorker is available
-  if (typeof MLClassifierWorker !== 'undefined') {
-    MLClassifierWorker.getInstance().catch(err => {
-      console.error('[Background] ML Worker failed to initialize:', err);
-    });
-  } else {
-    console.error('[Background] MLClassifierWorker not defined! Check if ml-worker.js loaded.');
-  }
+  await initialize();
 });
 
 // Handle alarms
@@ -294,6 +304,17 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     return false;
   }
+
+  // Handle history-related messages
+  if (message.type === 'HISTORY_REANALYZE') {
+    handleHistoryReanalysis(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'GET_PLATFORM_INFO') {
+    sendResponse(platformInfo);
+    return false;
+  }
 });
 
 async function handleClassifyTab(message, sendResponse) {
@@ -367,6 +388,72 @@ async function handleClassifyBatch(message, sendResponse) {
   } catch (error) {
     console.error('[Background] Batch classification error:', error);
     sendResponse({ success: false, error: error.message });
+  }
+}
+
+// =======================
+// History Analysis Handler
+// =======================
+async function handleHistoryReanalysis(sendResponse) {
+  try {
+    console.log('[History] Reanalysis requested');
+
+    // Check if history is enabled
+    const enabled = await historySettings.isEnabled();
+    if (!enabled) {
+      sendResponse({ success: false, error: 'History analysis is disabled' });
+      return;
+    }
+
+    // Check if platform supports history API
+    if (!platformInfo.hasHistoryAPI) {
+      console.log('[History] History API not available on this platform');
+      sendResponse({ success: false, error: 'History API not available on this platform' });
+      return;
+    }
+
+    // Trigger analysis
+    console.log('[History] Starting analysis...');
+    const result = await historyAnalyzer.analyzeHistory();
+    console.log('[History] Analysis complete:', result);
+    sendResponse({ success: true, result });
+  } catch (error) {
+    console.error('[History] Reanalysis failed:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// =======================
+// Initialization
+// =======================
+async function initialize() {
+  // Detect platform
+  await detectPlatform();
+
+  // Initialize tab tracker
+  await tabTracker.init();
+
+  // Initialize history analysis if enabled (Desktop only)
+  if (platformInfo.hasHistoryAPI) {
+    try {
+      const enabled = await historySettings.isEnabled();
+      if (enabled) {
+        console.log('[History] Auto-analysis at startup (implementation pending)');
+        // Will trigger analysis in Phase 1
+      }
+    } catch (error) {
+      console.error('[History] Initialization failed:', error);
+    }
+  }
+
+  // Initialize ML Worker
+  console.log('[Background] Triggering ML Worker initialization...');
+  if (typeof MLClassifierWorker !== 'undefined') {
+    MLClassifierWorker.getInstance().catch(err => {
+      console.error('[Background] ML Worker failed to initialize:', err);
+    });
+  } else {
+    console.error('[Background] MLClassifierWorker not defined! Check if ml-worker.js loaded.');
   }
 }
 
