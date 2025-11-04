@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FiltreInfini - Settings</title>
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/layouts.css">
+  <style>
+    .settings-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .settings-section {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .settings-section__title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .settings-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .settings-row:last-child {
+      border-bottom: none;
+    }
+
+    .settings-row__label {
+      flex: 1;
+    }
+
+    .settings-row__label h4 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .settings-row__label p {
+      margin: 0;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .settings-row__control {
+      margin-left: 20px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 48px;
+      height: 24px;
+      background: #ccc;
+      border-radius: 24px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .toggle-switch.active {
+      background: #4CAF50;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      top: 2px;
+      left: 2px;
+      transition: left 0.3s;
+    }
+
+    .toggle-switch.active::after {
+      left: 26px;
+    }
+
+    .select-input {
+      padding: 6px 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .text-input {
+      padding: 6px 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+      width: 200px;
+    }
+
+    .domain-list {
+      margin-top: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      padding: 8px;
+    }
+
+    .domain-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      background: #f5f5f5;
+      border-radius: 4px;
+    }
+
+    .domain-item__remove {
+      background: none;
+      border: none;
+      color: #f44336;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .privacy-notice {
+      background: #e8f5e9;
+      border-left: 4px solid #4CAF50;
+      padding: 16px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+
+    .privacy-notice h3 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+      color: #2e7d32;
+    }
+
+    .privacy-notice ul {
+      margin: 8px 0 0 20px;
+      font-size: 14px;
+      color: #1b5e20;
+    }
+
+    .stats-box {
+      background: #f5f5f5;
+      padding: 12px;
+      border-radius: 4px;
+      margin-top: 12px;
+    }
+
+    .stats-box__row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 14px;
+    }
+
+    .danger-zone {
+      border: 2px solid #f44336;
+      background: #ffebee;
+    }
+
+    .disabled-overlay {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="header__title">⚙️ Settings</h1>
+      <div class="header__actions">
+        <button id="back-btn" class="btn btn--secondary">← Back to Manager</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="settings-container">
+
+        <!-- Privacy Notice -->
+        <div class="privacy-notice">
+          <h3>🔒 Privacy-First Design</h3>
+          <p><strong>Your browsing history stays private and local.</strong></p>
+          <ul>
+            <li>Only domain statistics are stored (never full URLs or page titles)</li>
+            <li>All data remains on your device (never sent to external servers)</li>
+            <li>You control what's analyzed and can exclude sensitive domains</li>
+            <li>Clear all data anytime with one click</li>
+          </ul>
+        </div>
+
+        <!-- History Integration -->
+        <div class="settings-section">
+          <div class="settings-section__title">
+            📊 History Integration
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row__label">
+              <h4>Enable History Analysis</h4>
+              <p>Analyze browser history to provide deeper insights and better tab classification</p>
+            </div>
+            <div class="settings-row__control">
+              <div id="history-enabled-toggle" class="toggle-switch"></div>
+            </div>
+          </div>
+
+          <div id="history-settings" class="disabled-overlay">
+            <div class="settings-row">
+              <div class="settings-row__label">
+                <h4>Time Range</h4>
+                <p>How far back to analyze your browsing history</p>
+              </div>
+              <div class="settings-row__control">
+                <select id="time-range-select" class="select-input">
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="90d" selected>Last 90 Days</option>
+                  <option value="1y">Last Year</option>
+                  <option value="all">All Time</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row__label">
+                <h4>Minimum Visits Threshold</h4>
+                <p>Only show details for domains visited at least this many times (k-anonymity protection)</p>
+              </div>
+              <div class="settings-row__control">
+                <select id="min-visits-select" class="select-input">
+                  <option value="1">1 Visit</option>
+                  <option value="3" selected>3 Visits</option>
+                  <option value="5">5 Visits</option>
+                  <option value="10">10 Visits</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row__label">
+                <h4>Session Gap</h4>
+                <p>Minutes of inactivity to consider as a new browsing session</p>
+              </div>
+              <div class="settings-row__control">
+                <select id="session-gap-select" class="select-input">
+                  <option value="15">15 Minutes</option>
+                  <option value="30" selected>30 Minutes</option>
+                  <option value="60">1 Hour</option>
+                  <option value="120">2 Hours</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- History Features -->
+        <div class="settings-section">
+          <div class="settings-section__title">
+            ✨ History Features
+          </div>
+
+          <div id="history-features" class="disabled-overlay">
+            <div class="settings-row">
+              <div class="settings-row__label">
+                <h4>Enrich Tab Cards</h4>
+                <p>Show history badges on tab cards (visit count, last visit, safe-to-close indicator)</p>
+              </div>
+              <div class="settings-row__control">
+                <div id="feature-enrich-toggle" class="toggle-switch active"></div>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row__label">
+                <h4>Referrer Chains</h4>
+                <p>Show how you arrived at tabs (e.g., "From: Google → Wikipedia")</p>
+              </div>
+              <div class="settings-row__control">
+                <div id="feature-referrer-toggle" class="toggle-switch active"></div>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row__label">
+                <h4>Timeline Charts</h4>
+                <p>Visualize browsing activity over time</p>
+              </div>
+              <div class="settings-row__control">
+                <div id="feature-timeline-toggle" class="toggle-switch active"></div>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-row__label">
+                <h4>Co-occurrence Analysis</h4>
+                <p>Find domains you visit together (related tabs suggestions)</p>
+              </div>
+              <div class="settings-row__control">
+                <div id="feature-cooccurrence-toggle" class="toggle-switch active"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Excluded Domains -->
+        <div class="settings-section">
+          <div class="settings-section__title">
+            🚫 Excluded Domains
+          </div>
+
+          <div id="exclusion-controls" class="disabled-overlay">
+            <div class="settings-row">
+              <div class="settings-row__label">
+                <h4>Exclude Domains from Analysis</h4>
+                <p>Banking, health, or other sensitive domains to never analyze</p>
+              </div>
+            </div>
+
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+              <input type="text" id="exclude-domain-input" class="text-input" placeholder="e.g., bank.com">
+              <button id="add-exclude-btn" class="btn btn--small">Add</button>
+            </div>
+
+            <div id="excluded-domains-list" class="domain-list">
+              <p style="text-align: center; color: #999; margin: 8px 0;">No excluded domains yet</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Storage Stats -->
+        <div class="settings-section">
+          <div class="settings-section__title">
+            💾 Storage Statistics
+          </div>
+
+          <div class="stats-box">
+            <div class="stats-box__row">
+              <span>Domains analyzed:</span>
+              <strong id="stat-domains">0</strong>
+            </div>
+            <div class="stats-box__row">
+              <span>Co-occurrence pairs:</span>
+              <strong id="stat-cooccurrence">0</strong>
+            </div>
+            <div class="stats-box__row">
+              <span>Session summaries:</span>
+              <strong id="stat-sessions">0</strong>
+            </div>
+            <div class="stats-box__row">
+              <span>Last updated:</span>
+              <strong id="stat-updated">Never</strong>
+            </div>
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 12px;">
+            <button id="refresh-stats-btn" class="btn btn--small">🔄 Refresh Stats</button>
+            <button id="reanalyze-btn" class="btn btn--small">🔬 Reanalyze Now</button>
+          </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="settings-section danger-zone">
+          <div class="settings-section__title">
+            ⚠️ Danger Zone
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row__label">
+              <h4>Clear All Analysis Data</h4>
+              <p>Delete locally stored analysis data (domain stats, sessions). Does NOT delete your browser history - only our aggregated statistics.</p>
+            </div>
+            <div class="settings-row__control">
+              <button id="clear-all-btn" class="btn btn--small btn--danger">Clear Analysis Data</button>
+            </div>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row__label">
+              <h4>Reset Settings</h4>
+              <p>Reset all settings to defaults</p>
+            </div>
+            <div class="settings-row__control">
+              <button id="reset-settings-btn" class="btn btn--small btn--danger">Reset to Defaults</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../lib/storage.js"></script>
+  <script src="../lib/history-settings.js"></script>
+  <script src="../lib/history-storage.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>
