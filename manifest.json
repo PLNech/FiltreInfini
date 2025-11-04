@@ -51,6 +51,7 @@
       "lib/history-storage.js",
       "lib/domain-ontology.js",
       "lib/history-analyzer.js",
+      "lib/history-enricher.js",
       "background/ml-worker.js",
       "background/background.js"
     ]
