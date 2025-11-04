@@ -196,7 +196,7 @@ function extractFeatures(tab) {
  * Strategy: One concurrent request per domain - smart load sharing
  */
 class DownloadManager {
-  constructor() {
+  constructor(maxWorkers = 100) {
     this.queue = []; // URLs waiting to be fetched
     this.inProgressByDomain = new Map(); // domain -> URL currently being fetched
     this.results = new Map(); // url -> readingTime or null
@@ -206,6 +206,7 @@ class DownloadManager {
     this.MAX_RETRIES = 3;
     this.TIMEOUT_MS = 8000;
     this.MIN_DOMAIN_DELAY = 1000; // 1s between requests to same domain
+    this.MAX_WORKERS = maxWorkers; // Cap total concurrent workers
     this.successCount = 0;
     this.failureCount = 0;
     this.retryCount = 0;
@@ -556,20 +557,18 @@ class DownloadManager {
   }
 
   /**
-   * Process queue with dynamic workers (one per domain)
+   * Process queue with dynamic workers (one per domain, capped at MAX_WORKERS)
    */
   async processQueue() {
     const workers = [];
 
     while (this.queue.length > 0 || this.activeWorkers > 0) {
-      // Spawn workers for all available domains
-      let spawned = 0;
-      while (true) {
+      // Spawn workers for available domains (up to MAX_WORKERS)
+      while (this.activeWorkers < this.MAX_WORKERS) {
         const url = this.getNextFetchableUrl();
         if (!url) break;
 
         workers.push(this.worker(url));
-        spawned++;
       }
 
       // Wait a bit before checking again
