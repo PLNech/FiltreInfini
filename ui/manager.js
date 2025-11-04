@@ -315,9 +315,20 @@ async function renderTabList(tabs) {
   // Apply sorting
   const sortedTabs = sortTabs([...tabs], currentSortMode);
 
+  // Enrich tabs with history context (batch operation for performance)
+  let enrichedTabs = sortedTabs;
+  if (typeof historyEnricher !== 'undefined') {
+    try {
+      enrichedTabs = await historyEnricher.enrichBatch(sortedTabs);
+      console.log(`[History] Enriched ${enrichedTabs.length} tabs with history context`);
+    } catch (error) {
+      console.error('[History] Enrichment failed:', error);
+    }
+  }
+
   listEl.innerHTML = '';
 
-  for (let tab of sortedTabs) {
+  for (let tab of enrichedTabs) {
     const group = await groupManager.getGroup(tab.id);
     const itemEl = await createTabItemElement(tab, group);
     listEl.appendChild(itemEl);
@@ -411,6 +422,122 @@ function createMLBadges(classifications) {
 }
 
 /**
+ * Create history badges element
+ * @param {Object} history - History enrichment data from HistoryEnricher
+ * @returns {HTMLElement|null} Container with prominent history badges
+ */
+function createHistoryBadges(history) {
+  if (!history) return null;
+
+  const container = document.createElement('span');
+  container.className = 'tab-item__history-badges';
+  container.style.display = 'inline-flex';
+  container.style.gap = '6px';
+  container.style.marginLeft = '8px';
+  container.style.alignItems = 'center';
+
+  // Helper to create a badge
+  const createBadge = (icon, text, color, tooltip) => {
+    const badge = document.createElement('span');
+    badge.className = `history-badge history-badge--${color}`;
+    badge.innerHTML = `${icon} ${text}`;
+    badge.title = tooltip;
+    badge.style.fontSize = '0.85em';
+    badge.style.padding = '3px 8px';
+    badge.style.borderRadius = '4px';
+    badge.style.fontWeight = '600';
+    badge.style.display = 'inline-flex';
+    badge.style.alignItems = 'center';
+    badge.style.gap = '4px';
+    return badge;
+  };
+
+  // Safe-to-close indicator (most important!)
+  if (history.safeToClose) {
+    const badge = createBadge(
+      '✓',
+      'In history',
+      'green',
+      `This site has been visited ${history.visitCount} times. Safe to close - you can find it in your history.`
+    );
+    badge.style.backgroundColor = '#DCFCE7';
+    badge.style.color = '#166534';
+    container.appendChild(badge);
+  } else if (history.isNew) {
+    const badge = createBadge(
+      '⚠️',
+      'First visit',
+      'yellow',
+      'This is your first time visiting this domain. You may want to keep it open or bookmark it.'
+    );
+    badge.style.backgroundColor = '#FEF3C7';
+    badge.style.color = '#92400E';
+    container.appendChild(badge);
+  }
+
+  // Visit count (if significant)
+  if (history.visitCount > 0) {
+    const count = historyEnricher.formatVisitCount(history.visitCount);
+    const badge = createBadge(
+      '👁️',
+      `${count} visits`,
+      'blue',
+      `You've visited this domain ${history.visitCount} times`
+    );
+    badge.style.backgroundColor = '#DBEAFE';
+    badge.style.color = '#1E40AF';
+    container.appendChild(badge);
+  }
+
+  // Last visit (if recent)
+  if (history.lastVisit && history.timeSinceLastVisit) {
+    const timeAgo = historyEnricher.formatTimeAgo(history.lastVisit);
+    const badge = createBadge(
+      '🕐',
+      timeAgo,
+      'gray',
+      `Last visited: ${new Date(history.lastVisit).toLocaleString()}`
+    );
+    badge.style.backgroundColor = '#F3F4F6';
+    badge.style.color = '#374151';
+    container.appendChild(badge);
+  }
+
+  // Category badge (prominent with icon)
+  if (history.category && history.category !== 'other') {
+    const icon = historyEnricher.getCategoryIcon(history.category);
+    const colorClass = historyEnricher.getCategoryColor(history.category);
+    const badge = createBadge(
+      icon,
+      history.category.charAt(0).toUpperCase() + history.category.slice(1),
+      colorClass,
+      `Category: ${history.category}`
+    );
+    // Apply category-specific colors
+    const categoryColors = {
+      adult: { bg: '#FEE2E2', color: '#991B1B' },
+      gambling: { bg: '#FED7AA', color: '#9A3412' },
+      gaming: { bg: '#E9D5FF', color: '#6B21A8' },
+      social: { bg: '#DBEAFE', color: '#1E40AF' },
+      video: { bg: '#FCE7F3', color: '#9F1239' },
+      music: { bg: '#D1FAE5', color: '#065F46' },
+      news: { bg: '#F3F4F6', color: '#1F2937' },
+      shopping: { bg: '#FEF3C7', color: '#92400E' },
+      finance: { bg: '#CCFBF1', color: '#115E59' },
+      health: { bg: '#CFFAFE', color: '#155E75' },
+      learning: { bg: '#E0E7FF', color: '#3730A3' },
+      tech: { bg: '#E2E8F0', color: '#334155' }
+    };
+    const colors = categoryColors[history.category] || { bg: '#F3F4F6', color: '#374151' };
+    badge.style.backgroundColor = colors.bg;
+    badge.style.color = colors.color;
+    container.appendChild(badge);
+  }
+
+  return container.children.length > 0 ? container : null;
+}
+
+/**
  * Create a single tab item element
  */
 async function createTabItemElement(tab, group) {
@@ -497,6 +624,14 @@ async function createTabItemElement(tab, group) {
     const mlBadges = createMLBadges(metadata.mlClassifications);
     if (mlBadges) {
       meta.appendChild(mlBadges);
+    }
+  }
+
+  // History badges (PROMINENT - key feature!)
+  if (tab.history && typeof historyEnricher !== 'undefined') {
+    const historyBadges = createHistoryBadges(tab.history);
+    if (historyBadges) {
+      meta.appendChild(historyBadges);
     }
   }
 
