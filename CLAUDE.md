@@ -5,6 +5,10 @@ Mobile-first Firefox extension for advanced tab management. User is fed up with 
 
 ## Core Principles
 
+### 0. Working Practices
+- **Always leverage TODO feature**: Use TodoWrite tool with detailed task breakdown (1.1, 1.2, 2.1, etc.) to plan and track all work
+- **Data Minimization CRITICAL**: When handling sensitive data (history, auth tokens, personal info), ensure Claude NEVER sees it at glance - only user derives value through local processing
+
 ### 1. MVP-First Development
 - **Start small, validate fast**: Test UX patterns and data loading before going deep
 - **Don't follow rigid phase plans**: Find our own pace based on what works
@@ -252,6 +256,149 @@ Use design system but **don't over-engineer** - MVP first!
 - ✅ Query language supports AND/OR
 - ✅ No bugs when dealing with 100+ tabs
 - ✅ Clear UX for all actions
+
+## Browser History Integration
+
+### Purpose
+Leverage browser history to provide deeper insights, better classification, and "never lost" confidence for tab management. History adds temporal context and visit patterns that dramatically improve the user experience.
+
+### Privacy-First Design (CRITICAL)
+
+**Data Minimization Principle:**
+- Claude (AI) must NEVER see raw history data
+- All processing happens locally in the browser extension
+- Store ONLY aggregated domain statistics (never raw URLs or titles)
+- User derives value through local processing only
+
+**What We Store:**
+- ✅ Domain visit counts (e.g., "github.com: 150 visits")
+- ✅ Time patterns (morning/afternoon/evening distribution)
+- ✅ First/last visit timestamps
+- ✅ Co-occurrence data (domain pairs visited together)
+
+**What We NEVER Store:**
+- ❌ Raw URLs with paths (e.g., /user/secret-project)
+- ❌ Page titles
+- ❌ Individual visit timestamps
+- ❌ Browsing content or form data
+
+**Privacy Controls:**
+- Start disabled by default (opt-in required)
+- Time range limits (7d, 30d, 90d, 1y, all)
+- Domain exclusions (never analyze banking, health sites)
+- Clear cache button (delete all cached data)
+- K-anonymity threshold (min 3 visits before showing details)
+
+### Platform Support
+
+**Desktop Firefox:**
+- Full history API support via `browser.history.search()` and `browser.history.getVisits()`
+- All history features available
+
+**Firefox Android:**
+- ⚠️ History API NOT available (Firefox limitation)
+- Fallback: Tab-event pseudo-history (tracks tabs after extension install)
+- Limited but better than nothing
+
+### Key Features
+
+**Cross-Integration (Enrich Tabs):**
+- **Prominent history badges**: Visit count, last visit, "safe to close" indicator
+- **Referrer chains**: "Arrived from Google → Wikipedia"
+- **Never lost assurance**: "This tab exists in history" badge
+- **Better classification**: Use visit patterns to improve intent detection
+
+**History-Only Features:**
+- **Visit timeline**: Calendar heatmap of browsing activity
+- **Top domains chart**: Bar chart of most-visited sites
+- **Search history**: Find URLs you visited before
+- **Session summaries**: Recent browsing sessions with duration
+- **Co-occurrence graph**: Domains visited together
+
+### Architecture
+
+**Storage:**
+- IndexedDB for aggregates (10x faster than storage.local)
+- Database: "FiltreInfini-History"
+- Stores: domainStats, coOccurrence, sessionSummaries
+
+**Components:**
+- `lib/history-settings.js` - Privacy settings manager
+- `lib/history-storage.js` - IndexedDB wrapper
+- `lib/history-analyzer.js` - History analysis engine
+- `lib/history-enricher.js` - Tab enrichment with history context
+- `ui/history-timeline.html` - History-only insights page
+
+**Data Flow:**
+1. User enables history in settings (opt-in)
+2. Background worker fetches history via browser.history API
+3. Analyzer aggregates by domain (privacy-safe)
+4. Aggregates stored in IndexedDB (no raw data)
+5. UI reads aggregates to show badges and insights
+6. User sees value, AI never sees raw history
+
+### Implementation Phases
+
+**Phase 0: Foundation** (Week 1)
+- Settings UI, IndexedDB wrapper, platform detection
+
+**Phase 1: Basic Analysis** (Week 2)
+- History analyzer, startup trigger, background re-analysis
+
+**Phase 2: Tab Enrichment** (Week 3)
+- History badges on tab cards (PROMINENT - key feature!)
+- Safe-to-close indicators
+
+**Phase 3: History Features** (Week 4)
+- Timeline chart, top domains, search history
+- Add "History Insights" link directly in panel
+
+**Phase 4: Advanced Integration** (Weeks 5-6)
+- Referrer chains, co-occurrence, journey detection
+
+**Phase 5: Polish** (Week 7)
+- Privacy audit, performance optimization, documentation
+
+**Phase 6: Mobile Fallback** (Future)
+- Tab-event pseudo-history for Firefox Android
+
+### Testing Requirements
+
+**Privacy Audit:**
+- ✓ No raw URLs in IndexedDB
+- ✓ K-anonymity enforced
+- ✓ Domain exclusions work
+- ✓ No console.log() data leaks
+
+**Performance Benchmarks:**
+- Initial analysis (100k items): <30 seconds
+- Incremental updates: <5 seconds
+- Tab enrichment (100 tabs): <1 second
+- Timeline render: <2 seconds
+
+**Manual Testing:**
+- [ ] History analysis with 10k, 50k, 100k items
+- [ ] Opt-in flow clear and functional
+- [ ] Badges prominent and informative
+- [ ] Settings work (time range, exclusions)
+- [ ] Clear cache removes all data
+- [ ] Android fallback (tab events)
+
+### User Decisions
+
+✅ **Default state**: Opt-in (disabled by default, requires explicit enable)
+✅ **Badge style**: Prominent (key feature, not subtle)
+✅ **Android support**: Yes (include tab-event fallback in Phase 6)
+✅ **Search history**: Important early (include in Phase 3)
+✅ **Panel integration**: Add history page link directly in panel
+
+### Reference
+See `RESEARCH_HISTORY.md` for:
+- Complete API documentation
+- Code examples
+- Detailed architecture diagrams
+- Privacy strategies
+- Implementation roadmap
 
 ## License
 GPLv3 - Freedom to use, modify, distribute

@@ -9,6 +9,7 @@
   "permissions": [
     "tabs",
     "storage",
+    "history",
     "alarms",
     "scripting",
     "unlimitedStorage"
@@ -46,6 +47,10 @@
       "lib/domain-knowledge.js",
       "lib/context-features.js",
       "lib/feedback-manager.js",
+      "lib/history-settings.js",
+      "lib/history-storage.js",
+      "lib/domain-ontology.js",
+      "lib/history-analyzer.js",
       "background/ml-worker.js",
       "background/background.js"
     ]
