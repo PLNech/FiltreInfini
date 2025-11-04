@@ -193,10 +193,12 @@ function extractFeatures(tab) {
 
 /**
  * Download Manager for fetching reading times with queue and retry logic
+ * Strategy: One concurrent request per domain - smart load sharing
  */
 class DownloadManager {
   constructor() {
-    this.queue = [];
+    this.queue = []; // URLs waiting to be fetched
+    this.inProgressByDomain = new Map(); // domain -> URL currently being fetched
     this.results = new Map(); // url -> readingTime or null
     this.attempts = new Map(); // url -> attempt count
     this.domainLastFetch = new Map(); // domain -> timestamp of last fetch
@@ -206,6 +208,10 @@ class DownloadManager {
     this.MIN_DOMAIN_DELAY = 1000; // 1s between requests to same domain
     this.successCount = 0;
     this.failureCount = 0;
+    this.retryCount = 0;
+    this.waybackRescueCount = 0;
+    this.activeWorkers = 0;
+    this.peakWorkers = 0;
   }
 
   /**
@@ -473,70 +479,128 @@ class DownloadManager {
   }
 
   /**
-   * Process the queue sequentially with retries and per-domain rate limiting
+   * Check if domain can accept new request (not in progress, passed rate limit)
    */
-  async processQueue() {
-    while (this.queue.length > 0) {
-      const url = this.queue.shift();
+  canStartDomainFetch(domain) {
+    // Already fetching from this domain?
+    if (this.inProgressByDomain.has(domain)) {
+      return false;
+    }
+
+    // Rate limited?
+    return this.canFetchDomain(domain);
+  }
+
+  /**
+   * Find next fetchable URL from queue
+   */
+  getNextFetchableUrl() {
+    for (let i = 0; i < this.queue.length; i++) {
+      const url = this.queue[i];
       const domain = this.getDomain(url);
 
-      // Check if we can fetch from this domain (rate limiting)
-      if (!this.canFetchDomain(domain)) {
-        // Can't fetch yet, add back to end of queue
-        this.queue.push(url);
-        // Wait a bit before trying next URL
-        await new Promise(resolve => setTimeout(resolve, 100));
-        continue;
+      if (this.canStartDomainFetch(domain)) {
+        this.queue.splice(i, 1); // Remove from queue
+        return url;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Worker: fetch one URL
+   */
+  async worker(url) {
+    const domain = this.getDomain(url);
+    this.inProgressByDomain.set(domain, url);
+    this.activeWorkers++;
+    this.peakWorkers = Math.max(this.peakWorkers, this.activeWorkers);
+
+    const attempt = this.attempts.get(url) + 1;
+    this.attempts.set(url, attempt);
+
+    try {
+      const readingTime = await this.fetchOne(url);
+      this.results.set(url, readingTime);
+      this.successCount++;
+      this.markDomainFetched(domain);
+      this.resetDomainBackoff(domain);
+    } catch (error) {
+      this.markDomainFetched(domain);
+
+      // Handle 429 - increase backoff
+      if (error.message.includes('429')) {
+        this.increaseDomainBackoff(domain);
       }
 
-      const attempt = this.attempts.get(url) + 1;
-      this.attempts.set(url, attempt);
-
-      try {
-        const readingTime = await this.fetchOne(url);
-        this.results.set(url, readingTime);
-        this.successCount++;
-        this.markDomainFetched(domain);
-        this.resetDomainBackoff(domain); // Success: reset backoff
-      } catch (error) {
-        this.markDomainFetched(domain);
-
-        // Handle 429 (rate limit) - increase backoff
-        if (error.message.includes('429')) {
-          this.increaseDomainBackoff(domain);
-        }
-
-        // Retry: add back to end of queue
-        if (attempt < this.MAX_RETRIES) {
-          console.log(`\n   [fetch error] ${url} (attempt ${attempt}/${this.MAX_RETRIES}): ${error.message} - queuing retry...`);
-          this.queue.push(url); // Add to END of queue
-        } else {
-          // Final failure - last resort: try Wayback Machine for any error
-          console.log(`\n   [last resort] ${url} - trying Wayback Machine before giving up...`);
-          try {
-            const readingTime = await this.fetchFromWayback(url);
-            this.results.set(url, readingTime);
-            this.successCount++;
-            console.log(`\n   [wayback SUCCESS] ${url} - rescued from Wayback!`);
-          } catch (waybackError) {
-            console.log(`\n   [fetch FAILED] ${url} (gave up after ${this.MAX_RETRIES} attempts + wayback): ${error.message}`);
-            this.results.set(url, null);
-            this.failureCount++;
-          }
+      // Retry or fail
+      if (attempt < this.MAX_RETRIES) {
+        this.retryCount++;
+        this.queue.push(url); // Add to END of queue
+      } else {
+        // Last resort: Wayback
+        try {
+          const readingTime = await this.fetchFromWayback(url);
+          this.results.set(url, readingTime);
+          this.successCount++;
+          this.waybackRescueCount++;
+        } catch (waybackError) {
+          this.results.set(url, null);
+          this.failureCount++;
         }
       }
+    } finally {
+      this.inProgressByDomain.delete(domain);
+      this.activeWorkers--;
     }
   }
 
   /**
-   * Get current stats
+   * Process queue with dynamic workers (one per domain)
+   */
+  async processQueue() {
+    const workers = [];
+
+    while (this.queue.length > 0 || this.activeWorkers > 0) {
+      // Spawn workers for all available domains
+      let spawned = 0;
+      while (true) {
+        const url = this.getNextFetchableUrl();
+        if (!url) break;
+
+        workers.push(this.worker(url));
+        spawned++;
+      }
+
+      // Wait a bit before checking again
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // Wait for all workers to complete
+    await Promise.allSettled(workers);
+  }
+
+  /**
+   * Get current stats with nice formatting
    */
   getStats() {
     return {
       success: this.successCount,
       failure: this.failureCount,
-      pending: this.queue.length
+      pending: this.queue.length,
+      active: this.activeWorkers,
+      peak: this.peakWorkers,
+      retries: this.retryCount,
+      wayback: this.waybackRescueCount
     };
+  }
+
+  /**
+   * Get formatted stats string for display
+   */
+  getStatsString() {
+    const s = this.getStats();
+    return `✓${s.success} ✗${s.failure} ⏳${s.pending} 🔄${s.retries} 🏛️${s.wayback} | 🔥${s.active} (peak:${s.peak})`;
   }
 }
 
@@ -818,13 +882,14 @@ async function main() {
     console.log(`🧠 Running comprehensive analysis (batches of ${BATCH_SIZE})...\n`);
     const results = [];
     const startAnalysis = Date.now();
+    const checkpointInterval = 100; // Save every 100 tabs
+    const checkpointFile = join(rootDir, 'data', `checkpoint-${Date.now()}.json`);
 
     for (let batchStart = 0; batchStart < sample.length; batchStart += BATCH_SIZE) {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, sample.length);
       const batch = sample.slice(batchStart, batchEnd);
 
-      const stats = downloadManager.getStats();
-      process.stdout.write(`\r   Progress: ${batchEnd}/${sample.length} | DL: ${stats.success}✓ ${stats.failure}✗ ${stats.pending}⏳`);
+      process.stdout.write(`\r   Progress: ${batchEnd}/${sample.length} | DL: ${downloadManager.getStatsString()}`);
 
       // Process batch: Run ML models in parallel
       const batchResults = await Promise.all(
@@ -854,18 +919,37 @@ async function main() {
       );
 
       results.push(...batchResults);
+
+      // Checkpoint save every N tabs
+      if (results.length % checkpointInterval === 0) {
+        const checkpointData = {
+          metadata: {
+            version: '1.0.0',
+            checkpoint: true,
+            analyzedAt: Date.now(),
+            totalTabs: results.length,
+            targetTabs: sample.length,
+            progress: `${results.length}/${sample.length}`
+          },
+          tabs: results
+        };
+        writeFileSync(checkpointFile, JSON.stringify(checkpointData, null, 2));
+        console.log(`\n   💾 Checkpoint saved: ${results.length}/${sample.length} tabs`);
+      }
     }
 
     // Wait for all downloads to complete
     await queuePromise;
 
     const dlStats = downloadManager.getStats();
-    console.log(`\r   Progress: ${sample.length}/${sample.length} | DL: ${dlStats.success}✓ ${dlStats.failure}✗ ${dlStats.pending}⏳`);
+    console.log(`\r   Progress: ${sample.length}/${sample.length} | DL: ${downloadManager.getStatsString()}`);
 
     const analysisTime = Date.now() - startAnalysis;
     console.log(`\n✓ Analysis complete in ${(analysisTime / 1000).toFixed(1)}s`);
     console.log(`  Average: ${Math.round(analysisTime / results.length)}ms per tab`);
-    console.log(`  Reading time: ${dlStats.success} successful, ${dlStats.failure} failed (${((dlStats.success / results.length) * 100).toFixed(1)}% success rate)\n`);
+    console.log(`  Reading time: ${dlStats.success}✓ ${dlStats.failure}✗ (${((dlStats.success / results.length) * 100).toFixed(1)}% success)`);
+    console.log(`  Peak workers: ${dlStats.peak} concurrent (1 per domain)`);
+    console.log(`  Retries: ${dlStats.retries}, Wayback rescues: ${dlStats.wayback}\n`);
 
     // Find similar tabs
     findSimilarTabs(results);
