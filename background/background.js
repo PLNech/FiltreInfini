@@ -207,16 +207,21 @@ browser.action.onClicked.addListener(() => {
   });
 });
 
-// Set up periodic cleanup alarm (runs every 6 hours)
+// Set up periodic alarms
 browser.runtime.onInstalled.addListener(async (details) => {
   console.log('FiltreInfini installed/updated', details);
 
-  // Create alarm for periodic cleanup
+  // Create alarm for periodic cleanup (every 6 hours)
   browser.alarms.create('cleanup-bin', {
     periodInMinutes: 360 // 6 hours
   });
 
-  console.log('Cleanup alarm created');
+  // Create alarm for daily history re-analysis (every 24 hours)
+  browser.alarms.create('history-reanalysis', {
+    periodInMinutes: 1440 // 24 hours
+  });
+
+  console.log('Alarms created: cleanup-bin, history-reanalysis');
 
   // Run full initialization
   await initialize();
@@ -243,6 +248,31 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
       console.log(`Cleaned up ${orphanedCount} orphaned storage entries`);
     } catch (error) {
       console.error('Cleanup failed:', error);
+    }
+  }
+
+  if (alarm.name === 'history-reanalysis') {
+    console.log('Running scheduled history re-analysis...');
+
+    try {
+      // Check if history is enabled
+      const enabled = await historySettings.isEnabled();
+      if (!enabled) {
+        console.log('[History] Analysis disabled, skipping scheduled re-analysis');
+        return;
+      }
+
+      // Check if platform supports history API
+      if (!platformInfo.hasHistoryAPI) {
+        console.log('[History] History API not available, skipping re-analysis');
+        return;
+      }
+
+      // Run analysis
+      const result = await historyAnalyzer.analyzeHistory();
+      console.log(`[History] Scheduled re-analysis complete:`, result);
+    } catch (error) {
+      console.error('[History] Scheduled re-analysis failed:', error);
     }
   }
 });
@@ -438,8 +468,16 @@ async function initialize() {
     try {
       const enabled = await historySettings.isEnabled();
       if (enabled) {
-        console.log('[History] Auto-analysis at startup (implementation pending)');
-        // Will trigger analysis in Phase 1
+        console.log('[History] Triggering auto-analysis at startup...');
+
+        // Trigger analysis in background (don't block startup)
+        historyAnalyzer.analyzeHistory().then(result => {
+          console.log('[History] Startup analysis complete:', result);
+        }).catch(error => {
+          console.error('[History] Startup analysis failed:', error);
+        });
+      } else {
+        console.log('[History] Analysis disabled in settings, skipping startup analysis');
       }
     } catch (error) {
       console.error('[History] Initialization failed:', error);
@@ -458,6 +496,11 @@ async function initialize() {
 }
 
 console.log('FiltreInfini background script loaded');
+
+// Initialize extension
+initialize().catch(error => {
+  console.error('[Background] Initialization failed:', error);
+});
 
 // TODO: Add badge with tab count in Bin?
 // TODO: Add notifications when tabs are auto-deleted from Bin?
